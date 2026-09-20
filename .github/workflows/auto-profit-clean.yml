@@ -144,8 +144,7 @@ class HomeScreen extends StatefulWidget {
       _HomeScreenState();
 }
 
-class _HomeScreenState
-    extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   final List<Car> cars = [];
 
   double get totalInvested =>
@@ -428,8 +427,8 @@ class StatCard extends StatelessWidget {
 String money(double value) {
   return '${value.toStringAsFixed(0)} ₽';
 }
-EOF
-      - name: Create car forms
+          EOF
+                - name: Create car forms
         run: |
           cat >> lib/main.dart <<'EOF'
 
@@ -1037,8 +1036,8 @@ class _CarDetailsScreenState
   }
 }
 
-EOF
-      - name: Get dependencies
+          EOF
+                - name: Get dependencies
         run: |
           flutter pub get
 
