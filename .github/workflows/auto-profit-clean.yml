@@ -48,392 +48,392 @@ jobs:
       - name: Create app source
         run: |
           cat > lib/main.dart <<'EOF'
-          import 'package:flutter/material.dart';
+              import 'package:flutter/material.dart';
 
-void main() {
-  runApp(const AutoProfitApp());
-}
+    void main() {
+      runApp(const AutoProfitApp());
+    }
 
-class AutoProfitApp extends StatelessWidget {
-  const AutoProfitApp({super.key});
+    class AutoProfitApp extends StatelessWidget {
+      const AutoProfitApp({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Авто Профит',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-        ),
-        useMaterial3: true,
-      ),
-      home: const HomeScreen(),
-    );
-  }
-}
+      @override
+      Widget build(BuildContext context) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Авто Профит',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+            ),
+            useMaterial3: true,
+          ),
+          home: const HomeScreen(),
+        );
+      }
+    }
 
-class Car {
-  String make;
-  String model;
-  String year;
-  String vin;
-  String plate;
-  String mileage;
-  String purchasePrice;
-  String status;
-  String seller;
-  String notes;
-  String salePrice;
-  List<Expense> expenses;
+    class Car {
+      String make;
+      String model;
+      String year;
+      String vin;
+      String plate;
+      String mileage;
+      String purchasePrice;
+      String status;
+      String seller;
+      String notes;
+      String salePrice;
+      List<Expense> expenses;
 
-  Car({
-    required this.make,
-    required this.model,
-    required this.year,
-    required this.vin,
-    required this.plate,
-    required this.mileage,
-    required this.purchasePrice,
-    required this.status,
-    required this.seller,
-    required this.notes,
-    required this.salePrice,
-    required this.expenses,
-  });
+      Car({
+        required this.make,
+        required this.model,
+        required this.year,
+        required this.vin,
+        required this.plate,
+        required this.mileage,
+        required this.purchasePrice,
+        required this.status,
+        required this.seller,
+        required this.notes,
+        required this.salePrice,
+        required this.expenses,
+      });
 
-  double get purchase =>
-      double.tryParse(
-        purchasePrice.replaceAll(',', '.'),
-      ) ??
-      0;
+      double get purchase =>
+          double.tryParse(
+            purchasePrice.replaceAll(',', '.'),
+          ) ??
+          0;
 
-  double get sale =>
-      double.tryParse(
-        salePrice.replaceAll(',', '.'),
-      ) ??
-      0;
+      double get sale =>
+          double.tryParse(
+            salePrice.replaceAll(',', '.'),
+          ) ??
+          0;
 
-  double get expensesTotal =>
-      expenses.fold(
-        0,
-        (sum, item) => sum + item.amount,
-      );
+      double get expensesTotal =>
+          expenses.fold(
+            0,
+            (sum, item) => sum + item.amount,
+          );
 
-  double get invested => purchase + expensesTotal;
+      double get invested => purchase + expensesTotal;
 
-  double get profit => sale - invested;
-}
+      double get profit => sale - invested;
+    }
 
-class Expense {
-  String category;
-  double amount;
-  String note;
+    class Expense {
+      String category;
+      double amount;
+      String note;
 
-  Expense({
-    required this.category,
-    required this.amount,
-    required this.note,
-  });
-}
+      Expense({
+        required this.category,
+        required this.amount,
+        required this.note,
+      });
+    }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+    class HomeScreen extends StatefulWidget {
+      const HomeScreen({super.key});
 
-  @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
-}
+      @override
+      State<HomeScreen> createState() =>
+          _HomeScreenState();
+    }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final List<Car> cars = [];
+    class _HomeScreenState extends State<HomeScreen> {
+      final List<Car> cars = [];
 
-  double get totalInvested =>
-      cars.fold(
-        0,
-        (sum, car) => sum + car.invested,
-      );
+      double get totalInvested =>
+          cars.fold(
+            0,
+            (sum, car) => sum + car.invested,
+          );
 
-  double get totalProfit =>
-      cars.fold(
-        0,
-        (sum, car) => sum + car.profit,
-      );
+      double get totalProfit =>
+          cars.fold(
+            0,
+            (sum, car) => sum + car.profit,
+          );
 
-  int countStatus(String status) {
-    return cars
-        .where((car) => car.status == status)
-        .length;
-  }
+      int countStatus(String status) {
+        return cars
+            .where((car) => car.status == status)
+            .length;
+      }
 
-  void addCar() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarFormScreen(
-          onSave: (car) {
-            setState(() {
-              cars.add(car);
-            });
-          },
-        ),
-      ),
-    );
-  }
-
-  void openCar(Car car) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarDetailsScreen(
-          car: car,
-          onChanged: () {
-            setState(() {});
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Авто Профит'),
-      ),
-      floatingActionButton:
-          FloatingActionButton.extended(
-        onPressed: addCar,
-        icon: const Icon(Icons.add),
-        label: const Text('Добавить авто'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Панель управления',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+      void addCar() {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CarFormScreen(
+              onSave: (car) {
+                setState(() {
+                  cars.add(car);
+                });
+              },
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  title: 'Автомобили',
-                  value: '${cars.length}',
-                  icon: Icons.directions_car,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  title: 'На продаже',
-                  value:
-                      '${countStatus('На продаже')}',
-                  icon: Icons.sell,
-                ),
-              ),
-            ],
+        );
+      }
+
+      void openCar(Car car) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CarDetailsScreen(
+              car: car,
+              onChanged: () {
+                setState(() {});
+              },
+            ),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  title: 'Вложено',
-                  value: money(totalInvested),
-                  icon:
-                      Icons.account_balance_wallet,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  title: 'Прибыль',
-                  value: money(totalProfit),
-                  icon: Icons.trending_up,
-                ),
-              ),
-            ],
+        );
+      }
+
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Авто Профит'),
           ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+          floatingActionButton:
+              FloatingActionButton.extended(
+            onPressed: addCar,
+            icon: const Icon(Icons.add),
+            label: const Text('Добавить авто'),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text(
+                'Панель управления',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
                 children: [
-                  const Text(
-                    'Статусы',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: StatCard(
+                      title: 'Автомобили',
+                      value: '${cars.length}',
+                      icon: Icons.directions_car,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  statusRow(
-                    'Куплен',
-                    countStatus('Куплен'),
-                  ),
-                  statusRow(
-                    'В ремонте',
-                    countStatus('В ремонте'),
-                  ),
-                  statusRow(
-                    'Готов к продаже',
-                    countStatus(
-                      'Готов к продаже',
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'На продаже',
+                      value:
+                          '${countStatus('На продаже')}',
+                      icon: Icons.sell,
                     ),
-                  ),
-                  statusRow(
-                    'На продаже',
-                    countStatus('На продаже'),
-                  ),
-                  statusRow(
-                    'Продан',
-                    countStatus('Продан'),
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (cars.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.directions_car_outlined,
-                      size: 56,
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: StatCard(
+                      title: 'Вложено',
+                      value: money(totalInvested),
+                      icon:
+                          Icons.account_balance_wallet,
                     ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Автомобилей пока нет',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight:
-                            FontWeight.bold,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: StatCard(
+                      title: 'Прибыль',
+                      value: money(totalProfit),
+                      icon: Icons.trending_up,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Статусы',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Нажмите «Добавить авто», чтобы создать первую карточку.',
-                      textAlign:
-                          TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      statusRow(
+                        'Куплен',
+                        countStatus('Куплен'),
+                      ),
+                      statusRow(
+                        'В ремонте',
+                        countStatus('В ремонте'),
+                      ),
+                      statusRow(
+                        'Готов к продаже',
+                        countStatus(
+                          'Готов к продаже',
+                        ),
+                      ),
+                      statusRow(
+                        'На продаже',
+                        countStatus('На продаже'),
+                      ),
+                      statusRow(
+                        'Продан',
+                        countStatus('Продан'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            )
-          else
-            ...cars.map(
-              (car) => Card(
-                child: ListTile(
-                  leading:
-                      const CircleAvatar(
-                    child: Icon(
-                      Icons.directions_car,
+              const SizedBox(height: 20),
+              if (cars.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.directions_car_outlined,
+                          size: 56,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Автомобилей пока нет',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Нажмите «Добавить авто», чтобы создать первую карточку.',
+                          textAlign:
+                              TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
-                  title: Text(
-                    '${car.make} ${car.model}',
+                )
+              else
+                ...cars.map(
+                  (car) => Card(
+                    child: ListTile(
+                      leading:
+                          const CircleAvatar(
+                        child: Icon(
+                          Icons.directions_car,
+                        ),
+                      ),
+                      title: Text(
+                        '${car.make} ${car.model}',
+                      ),
+                      subtitle: Text(
+                        '${car.year} • ${car.status}\n'
+                        'Вложено: ${money(car.invested)}',
+                      ),
+                      isThreeLine: true,
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                      ),
+                      onTap: () => openCar(car),
+                    ),
                   ),
-                  subtitle: Text(
-                    '${car.year} • ${car.status}\n'
-                    'Вложено: ${money(car.invested)}',
-                  ),
-                  isThreeLine: true,
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
-                  onTap: () => openCar(car),
                 ),
-              ),
-            ),
-          const SizedBox(height: 100),
-        ],
-      ),
-    );
-  }
+              const SizedBox(height: 100),
+            ],
+          ),
+        );
+      }
 
-  Widget statusRow(
-    String title,
-    int count,
-  ) {
-    return Padding(
-      padding:
-          const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title),
-          Text(
-            '$count',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
+      Widget statusRow(
+        String title,
+        int count,
+      ) {
+        return Padding(
+          padding:
+              const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title),
+              Text(
+                '$count',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    class StatCard extends StatelessWidget {
+      final String title;
+      final String value;
+      final IconData icon;
+
+      const StatCard({
+        super.key,
+        required this.title,
+        required this.value,
+        required this.icon,
+      });
+
+      @override
+      Widget build(BuildContext context) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Icon(icon),
+                const SizedBox(height: 8),
+                Text(title),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
+        );
+      }
+    }
 
-class StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
+    String money(double value) {
+      return '${value.toStringAsFixed(0)} ₽';
+    }
+    EOF
 
-  const StatCard({
-    super.key,
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Icon(icon),
-            const SizedBox(height: 8),
-            Text(title),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-String money(double value) {
-  return '${value.toStringAsFixed(0)} ₽';
-}
-          EOF
-
-      - name: Create car forms
-        run: |
-          cat >> lib/main.dart <<'EOF'
-          class CarFormScreen extends StatefulWidget {
+- name: Create car forms
+  run: |
+    cat >> lib/main.dart <<'EOF'
+    class CarFormScreen extends StatefulWidget {
   final void Function(Car car) onSave;
 
   const CarFormScreen({
@@ -1036,9 +1036,8 @@ class _CarDetailsScreenState
     );
   }
 }
-
-          EOF
-          - name: Get dependencies
+EOF
+- name: Get dependencies
   run: |
     flutter pub get
 
