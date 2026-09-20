@@ -5,21 +5,22 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Download project archive
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check files
         run: |
-          curl -L "https://github.com/${{ github.repository }}/raw/${{ github.ref_name }}/auto_profit_cloud_build.zip" -o project.zip
+          ls -la
+          file auto_profit_cloud_build.zip
 
       - name: Extract project
         run: |
-          unzip -q project.zip
-          mv auto_profit_cloud/* .
-          rm -rf auto_profit_cloud project.zip
-
-      - name: Checkout
-        uses: actions/checkout@v4
+          unzip -q auto_profit_cloud_build.zip
+          cp -r auto_profit_cloud/* .
+          rm -rf auto_profit_cloud auto_profit_cloud_build.zip
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
