@@ -1,4 +1,4 @@
-name: Build Auto Profit APK
+name: Build Auto Profit
 
 on:
   workflow_dispatch:
@@ -18,27 +18,34 @@ jobs:
           channel: stable
 
       - name: Create Flutter project
+        shell: bash
         run: |
-          flutter create . --platforms=android --project-name auto_profit
+          set -e
+
+          flutter create . \
+            --platforms=android \
+            --project-name auto_profit
 
           cat > pubspec.yaml <<'EOF'
           name: auto_profit
           description: Auto Profit
           publish_to: "none"
+          version: 1.0.0+1
 
           environment:
-            sdk: ">=3.9.0 <4.0.0"
+            sdk: ">=3.0.0 <4.0.0"
 
           dependencies:
             flutter:
               sdk: flutter
+            cupertino_icons: ^1.0.8
             sqflite: ^2.4.1
             path: ^1.9.0
+            path_provider: ^2.1.5
             image_picker: ^1.1.2
             file_picker: ^8.1.7
-            path_provider: ^2.1.5
-            open_filex: ^4.7.0
-            intl: ^0.20.2
+            open_filex: ^4.6.0
+            intl: ^0.19.0
 
           dev_dependencies:
             flutter_test:
@@ -48,6 +55,9 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
+
+          rm -f test/widget_test.dart
+          mkdir -p lib
 
           cat > lib/main.dart <<'DART'
           import 'dart:io';
@@ -65,75 +75,53 @@ jobs:
             'В ремонте',
             'Готов к продаже',
             'На продаже',
-            'Продан',
+            'Продан'
           ];
 
-          double toMoney(String s) {
-            return double.tryParse(
-              s.replaceAll(' ', '').replaceAll(',', '.'),
-            ) ?? 0;
-          }
+          double val(String s) =>
+              double.tryParse(s.replaceAll(' ', '').replaceAll(',', '.')) ?? 0;
 
-          String money(double n) {
-            return '${NumberFormat('#,##0', 'ru_RU').format(n)} ₽';
-          }
+          String money(num n) =>
+              NumberFormat('#,##0.##', 'ru_RU').format(n);
 
-          class AppDb {
+          class DB {
             static Database? _db;
 
-            static Future<Database> get db async {
+            static Future<Database> get open async {
               if (_db != null) return _db!;
 
-              final dir =
-                  await getApplicationDocumentsDirectory();
+              final dir = await getApplicationDocumentsDirectory();
 
               _db = await openDatabase(
                 p.join(dir.path, 'auto_profit.db'),
                 version: 1,
                 onCreate: (db, version) async {
-                  await db.execute('''
-                    CREATE TABLE cars(
-                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      make TEXT,
-                      model TEXT,
-                      year INTEGER,
-                      vin TEXT,
-                      plate TEXT,
-                      mileage INTEGER,
-                      purchase REAL,
-                      sale REAL,
-                      seller TEXT,
-                      notes TEXT,
-                      status TEXT
-                    )
-                  ''');
+                  await db.execute(
+                    'CREATE TABLE cars('
+                    'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                    'make TEXT, model TEXT, year INTEGER, vin TEXT, plate TEXT,'
+                    'mileage INTEGER, purchaseDate TEXT, purchasePrice REAL,'
+                    'seller TEXT, notes TEXT, status TEXT, salePrice REAL)',
+                  );
 
-                  await db.execute('''
-                    CREATE TABLE categories(
-                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      name TEXT UNIQUE
-                    )
-                  ''');
+                  await db.execute(
+                    'CREATE TABLE categories('
+                    'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                    'name TEXT UNIQUE)',
+                  );
 
-                  await db.execute('''
-                    CREATE TABLE expenses(
-                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      car_id INTEGER,
-                      category_id INTEGER,
-                      amount REAL,
-                      note TEXT
-                    )
-                  ''');
+                  await db.execute(
+                    'CREATE TABLE expenses('
+                    'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                    'carId INTEGER, categoryId INTEGER, amount REAL,'
+                    'note TEXT, date TEXT)',
+                  );
 
-                  await db.execute('''
-                    CREATE TABLE files(
-                      id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      car_id INTEGER,
-                      name TEXT,
-                      path TEXT,
-                      type TEXT
-                    )
-                  ''');
+                  await db.execute(
+                    'CREATE TABLE files('
+                    'id INTEGER PRIMARY KEY AUTOINCREMENT,'
+                    'carId INTEGER, path TEXT, name TEXT, type TEXT)',
+                  );
 
                   for (final name in [
                     'Ремонт',
@@ -145,14 +133,9 @@ jobs:
                     'Доставка',
                     'Диагностика',
                     'Комиссия',
-                    'Прочее',
+                    'Прочее'
                   ]) {
-                    await db.insert(
-                      'categories',
-                      {'name': name},
-                      conflictAlgorithm:
-                          ConflictAlgorithm.ignore,
-                    );
+                    await db.insert('categories', {'name': name});
                   }
                 },
               );
@@ -163,134 +146,62 @@ jobs:
 
           class Car {
             int? id;
+            int? year;
+            int? mileage;
             String make;
             String model;
-            int? year;
             String vin;
             String plate;
-            int? mileage;
-            double purchase;
-            double? sale;
+            String purchaseDate;
             String seller;
             String notes;
             String status;
+            double purchasePrice;
+            double salePrice;
 
             Car({
               this.id,
+              this.year,
+              this.mileage,
               this.make = '',
               this.model = '',
-              this.year,
               this.vin = '',
               this.plate = '',
-              this.mileage,
-              this.purchase = 0,
-              this.sale,
+              this.purchaseDate = '',
               this.seller = '',
               this.notes = '',
               this.status = 'Куплен',
+              this.purchasePrice = 0,
+              this.salePrice = 0,
             });
 
-            factory Car.fromMap(
-              Map<String, Object?> m,
-            ) {
+            factory Car.from(Map<String, Object?> x) {
               return Car(
-                id: m['id'] as int?,
-                make: '${m['make'] ?? ''}',
-                model: '${m['model'] ?? ''}',
-                year: m['year'] as int?,
-                vin: '${m['vin'] ?? ''}',
-                plate: '${m['plate'] ?? ''}',
-                mileage: m['mileage'] as int?,
-                purchase:
-                    (m['purchase'] as num?)?.toDouble() ?? 0,
-                sale:
-                    (m['sale'] as num?)?.toDouble(),
-                seller: '${m['seller'] ?? ''}',
-                notes: '${m['notes'] ?? ''}',
-                status:
-                    '${m['status'] ?? 'Куплен'}',
-              );
-            }
-
-            Map<String, Object?> toMap() {
-              return {
-                'make': make,
-                'model': model,
-                'year': year,
-                'vin': vin,
-                'plate': plate,
-                'mileage': mileage,
-                'purchase': purchase,
-                'sale': sale,
-                'seller': seller,
-                'notes': notes,
-                'status': status,
-              };
-            }
-          }
-
-          Future<List<Car>> loadCars(String query) async {
-            final db = await AppDb.db;
-            final q = query.trim();
-
-            final rows = await db.query(
-              'cars',
-              where: q.isEmpty
-                  ? null
-                  : 'make LIKE ? OR model LIKE ? OR '
-                    'vin LIKE ? OR plate LIKE ?',
-              whereArgs: q.isEmpty
-                  ? null
-                  : [
-                      '%$q%',
-                      '%$q%',
-                      '%$q%',
-                      '%$q%',
-                    ],
-              orderBy: 'id DESC',
-            );
-
-            return rows.map(Car.fromMap).toList();
-          }
-
-          Future<double> expensesTotal(int carId) async {
-            final db = await AppDb.db;
-
-            final result = await db.rawQuery(
-              'SELECT COALESCE(SUM(amount),0) total '
-              'FROM expenses WHERE car_id=?',
-              [carId],
-            );
-
-            return (result.first['total'] as num).toDouble();
-          }
-
-          Future<void> saveCar(Car car) async {
-            final db = await AppDb.db;
-
-            if (car.id == null) {
-              car.id = await db.insert(
-                'cars',
-                car.toMap(),
-              );
-            } else {
-              await db.update(
-                'cars',
-                car.toMap(),
-                where: 'id=?',
-                whereArgs: [car.id],
+                id: x['id'] as int?,
+                year: x['year'] as int?,
+                mileage: x['mileage'] as int?,
+                make: '${x['make'] ?? ''}',
+                model: '${x['model'] ?? ''}',
+                vin: '${x['vin'] ?? ''}',
+                plate: '${x['plate'] ?? ''}',
+                purchaseDate: '${x['purchaseDate'] ?? ''}',
+                seller: '${x['seller'] ?? ''}',
+                notes: '${x['notes'] ?? ''}',
+                status: '${x['status'] ?? 'Куплен'}',
+                purchasePrice:
+                    (x['purchasePrice'] as num? ?? 0).toDouble(),
+                salePrice:
+                    (x['salePrice'] as num? ?? 0).toDouble(),
               );
             }
           }
 
-          void main() async {
-            WidgetsFlutterBinding.ensureInitialized();
-            await AppDb.db;
-            runApp(const AutoProfitApp());
+          void main() {
+            runApp(const AutoProfit());
           }
 
-          class AutoProfitApp extends StatelessWidget {
-            const AutoProfitApp({super.key});
+          class AutoProfit extends StatelessWidget {
+            const AutoProfit({super.key});
 
             @override
             Widget build(BuildContext context) {
@@ -310,223 +221,130 @@ jobs:
             const HomePage({super.key});
 
             @override
-            State<HomePage> createState() =>
-                _HomePageState();
+            State<HomePage> createState() => _HomePageState();
           }
 
-          class _HomePageState
-              extends State<HomePage> {
-            final search = TextEditingController();
+          class _HomePageState extends State<HomePage> {
+            String search = '';
 
-            List<Car> cars = [];
-            double invested = 0;
-            double revenue = 0;
-            double profit = 0;
-
-            @override
-            void initState() {
-              super.initState();
-              load();
-            }
-
-            Future<void> load() async {
-              final data =
-                  await loadCars(search.text);
-
-              double inv = 0;
-              double rev = 0;
-
-              for (final car in data) {
-                inv += car.purchase;
-
-                if (car.id != null) {
-                  inv +=
-                      await expensesTotal(car.id!);
-                }
-
-                rev += car.sale ?? 0;
-              }
-
-              if (!mounted) return;
-
-              setState(() {
-                cars = data;
-                invested = inv;
-                revenue = rev;
-                profit = revenue - invested;
-              });
+            Future<List<Map<String, Object?>>> cars() async {
+              return (await DB.open).query(
+                'cars',
+                orderBy: 'id DESC',
+              );
             }
 
             @override
             Widget build(BuildContext context) {
               return Scaffold(
                 appBar: AppBar(
-                  title: const Text(
-                    'Auto Profit',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  title: const Text('Auto Profit'),
                 ),
-                floatingActionButton:
-                    FloatingActionButton.extended(
+                floatingActionButton: FloatingActionButton(
                   onPressed: () async {
                     await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            const CarPage(),
+                        builder: (_) => const CarPage(),
                       ),
                     );
-
-                    load();
+                    setState(() {});
                   },
-                  icon: const Icon(Icons.add),
-                  label:
-                      const Text('Автомобиль'),
+                  child: const Icon(Icons.add),
                 ),
-                body: RefreshIndicator(
-                  onRefresh: load,
-                  child: ListView(
-                    padding:
-                        const EdgeInsets.all(12),
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: statCard(
-                              'Вложено',
-                              money(invested),
-                              Icons
-                                  .account_balance_wallet,
+                body: FutureBuilder<List<Map<String, Object?>>>(
+                  future: cars(),
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Center(
+                        child: CircularProgressIndicator(),
+                      );
+                    }
+
+                    final all = snap.data!.map(Car.from).toList();
+
+                    final list = all.where((car) {
+                      final text =
+                          '${car.make} ${car.model} ${car.vin} ${car.plate}'
+                              .toLowerCase();
+                      return text.contains(search.toLowerCase());
+                    }).toList();
+
+                    return Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: TextField(
+                            decoration: const InputDecoration(
+                              labelText:
+                                  'Поиск VIN, номера, марки или модели',
+                              prefixIcon: Icon(Icons.search),
+                              border: OutlineInputBorder(),
+                            ),
+                            onChanged: (v) {
+                              setState(() => search = v);
+                            },
+                          ),
+                        ),
+                        Card(
+                          child: ListTile(
+                            title: Text(
+                              'Автомобилей: ${all.length}',
+                            ),
+                            subtitle: const Text(
+                              'Нажмите +, чтобы добавить автомобиль',
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: statCard(
-                              'Продажи',
-                              money(revenue),
-                              Icons.sell,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      statCard(
-                        'Прибыль',
-                        money(profit),
-                        Icons.trending_up,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: search,
-                        onChanged: (_) => load(),
-                        decoration:
-                            const InputDecoration(
-                          labelText: 'Поиск',
-                          hintText:
-                              'VIN, номер, марка, модель',
-                          prefixIcon:
-                              Icon(Icons.search),
-                          border:
-                              OutlineInputBorder(),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Автомобилей: ${cars.length}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      ...cars.map(carTile),
-                      const SizedBox(height: 90),
-                    ],
-                  ),
-                ),
-              );
-            }
+                        Expanded(
+                          child: list.isEmpty
+                              ? const Center(
+                                  child: Text(
+                                    'Автомобилей пока нет',
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: list.length,
+                                  itemBuilder: (context, i) {
+                                    final car = list[i];
 
-            Widget statCard(
-              String title,
-              String value,
-              IconData icon,
-            ) {
-              return Card(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.all(14),
-                  child: Row(
-                    children: [
-                      Icon(icon, size: 30),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(title),
-                            const SizedBox(height: 3),
-                            Text(
-                              value,
-                              style:
-                                  const TextStyle(
-                                fontSize: 18,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                                    return Card(
+                                      child: ListTile(
+                                        title: Text(
+                                          '${car.make} ${car.model} ${car.year ?? ''}',
+                                        ),
+                                        subtitle: Text(
+                                          '${car.plate} • ${car.vin}\n'
+                                          '${car.status}',
+                                        ),
+                                        isThreeLine: true,
+                                        trailing: const Icon(
+                                          Icons.chevron_right,
+                                        ),
+                                        onTap: () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                                  CarPage(car: car),
+                                            ),
+                                          );
+                                          setState(() {});
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            Widget carTile(Car car) {
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Text(
-                      car.make.isEmpty
-                          ? '?'
-                          : car.make[0]
-                              .toUpperCase(),
-                    ),
-                  ),
-                  title: Text(
-                    '${car.make} ${car.model}'
-                            .trim()
-                            .isEmpty
-                        ? 'Без названия'
-                        : '${car.make} ${car.model}',
-                  ),
-                  subtitle: Text(
-                    '${car.plate.isEmpty ? 'Без номера' : car.plate}'
-                    ' • ${car.status}',
-                  ),
-                  trailing:
-                      const Icon(Icons.chevron_right),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            CarPage(car: car),
-                      ),
+                      ],
                     );
-
-                    load();
                   },
                 ),
               );
             }
           }
-          DART
-                    class CarPage extends StatefulWidget {
+
+          class CarPage extends StatefulWidget {
             final Car? car;
 
             const CarPage({
@@ -535,8 +353,7 @@ jobs:
             });
 
             @override
-            State<CarPage> createState() =>
-                _CarPageState();
+            State<CarPage> createState() => _CarPageState();
           }
 
           class _CarPageState extends State<CarPage> {
@@ -548,288 +365,151 @@ jobs:
             final vin = TextEditingController();
             final plate = TextEditingController();
             final mileage = TextEditingController();
-            final purchase = TextEditingController();
-            final sale = TextEditingController();
+            final date = TextEditingController();
+            final price = TextEditingController();
             final seller = TextEditingController();
             final notes = TextEditingController();
+            final sale = TextEditingController();
 
-            List<Map<String, Object?>> categories = [];
             List<Map<String, Object?>> expenses = [];
             List<Map<String, Object?>> files = [];
-
-            double totalExpenses = 0;
-
-            @override
+            List<Map<String, Object?>> categories = [];
+                        @override
             void initState() {
               super.initState();
 
-              car = widget.car == null
-                  ? Car()
-                  : Car(
-                      id: widget.car!.id,
-                      make: widget.car!.make,
-                      model: widget.car!.model,
-                      year: widget.car!.year,
-                      vin: widget.car!.vin,
-                      plate: widget.car!.plate,
-                      mileage: widget.car!.mileage,
-                      purchase: widget.car!.purchase,
-                      sale: widget.car!.sale,
-                      seller: widget.car!.seller,
-                      notes: widget.car!.notes,
-                      status: widget.car!.status,
-                    );
+              car = widget.car ??
+                  Car(
+                    purchaseDate:
+                        DateFormat('dd.MM.yyyy').format(DateTime.now()),
+                  );
 
+              load();
+            }
+
+            Future<void> load() async {
               make.text = car.make;
               model.text = car.model;
-              year.text = car.year?.toString() ?? '';
+              year.text = '${car.year ?? ''}';
               vin.text = car.vin;
               plate.text = car.plate;
-              mileage.text = car.mileage?.toString() ?? '';
-              purchase.text =
-                  car.purchase == 0
-                      ? ''
-                      : car.purchase.toString();
-              sale.text =
-                  car.sale == null
-                      ? ''
-                      : car.sale.toString();
+              mileage.text = '${car.mileage ?? ''}';
+              date.text = car.purchaseDate;
+              price.text = '${car.purchasePrice}';
               seller.text = car.seller;
               notes.text = car.notes;
+              sale.text =
+                  car.salePrice == 0 ? '' : '${car.salePrice}';
 
-              loadDetails();
-            }
+              final db = await DB.open;
 
-            @override
-            void dispose() {
-              make.dispose();
-              model.dispose();
-              year.dispose();
-              vin.dispose();
-              plate.dispose();
-              mileage.dispose();
-              purchase.dispose();
-              sale.dispose();
-              seller.dispose();
-              notes.dispose();
-              super.dispose();
-            }
+              if (car.id != null) {
+                expenses = await db.rawQuery(
+                  'SELECT e.*, c.name category '
+                  'FROM expenses e '
+                  'JOIN categories c ON c.id=e.categoryId '
+                  'WHERE carId=? ORDER BY e.id DESC',
+                  [car.id],
+                );
 
-            Future<void> loadDetails() async {
-              final db = await AppDb.db;
+                files = await db.query(
+                  'files',
+                  where: 'carId=?',
+                  whereArgs: [car.id],
+                  orderBy: 'id DESC',
+                );
+              }
 
-              final cats = await db.query(
+              categories = await db.query(
                 'categories',
-                orderBy: 'name COLLATE NOCASE',
+                orderBy: 'name',
               );
 
-              if (car.id == null) {
-                if (!mounted) return;
-
-                setState(() {
-                  categories = cats;
-                });
-
-                return;
-              }
-
-              final exp = await db.rawQuery('''
-                SELECT
-                  expenses.id,
-                  expenses.amount,
-                  expenses.note,
-                  expenses.category_id,
-                  categories.name category
-                FROM expenses
-                LEFT JOIN categories
-                  ON categories.id = expenses.category_id
-                WHERE expenses.car_id=?
-                ORDER BY expenses.id DESC
-              ''', [car.id]);
-
-              final attached = await db.query(
-                'files',
-                where: 'car_id=?',
-                whereArgs: [car.id],
-                orderBy: 'id DESC',
-              );
-
-              double sum = 0;
-
-              for (final row in exp) {
-                sum +=
-                    (row['amount'] as num?)
-                        ?.toDouble() ??
-                    0;
-              }
-
-              if (!mounted) return;
-
-              setState(() {
-                categories = cats;
-                expenses = exp;
-                files = attached;
-                totalExpenses = sum;
-              });
+              if (mounted) setState(() {});
             }
 
             Future<void> save() async {
-              car.make = make.text.trim();
-              car.model = model.text.trim();
-              car.year =
-                  int.tryParse(year.text.trim());
-              car.vin = vin.text.trim();
-              car.plate = plate.text.trim();
-              car.mileage =
-                  int.tryParse(mileage.text.trim());
-              car.purchase =
-                  toMoney(purchase.text);
-              car.sale = sale.text.trim().isEmpty
-                  ? null
-                  : toMoney(sale.text);
-              car.seller = seller.text.trim();
-              car.notes = notes.text.trim();
+              final db = await DB.open;
 
-              await saveCar(car);
+              final data = {
+                'make': make.text,
+                'model': model.text,
+                'year': int.tryParse(year.text),
+                'vin': vin.text,
+                'plate': plate.text,
+                'mileage': int.tryParse(mileage.text),
+                'purchaseDate': date.text,
+                'purchasePrice': val(price.text),
+                'seller': seller.text,
+                'notes': notes.text,
+                'status': car.status,
+                'salePrice': val(sale.text),
+              };
 
-              if (!mounted) return;
-
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Автомобиль сохранён',
-                  ),
-                ),
-              );
-
-              setState(() {});
-            }
-
-            Future<void> deleteCar() async {
               if (car.id == null) {
-                Navigator.pop(context);
-                return;
+                car.id = await db.insert('cars', data);
+              } else {
+                await db.update(
+                  'cars',
+                  data,
+                  where: 'id=?',
+                  whereArgs: [car.id],
+                );
               }
 
-              final ok =
-                  await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text(
-                    'Удалить автомобиль?',
+              await load();
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Автомобиль сохранён'),
                   ),
-                  content: const Text(
-                    'Будут удалены автомобиль, расходы и прикреплённые файлы из базы приложения.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.pop(
-                        context,
-                        false,
-                      ),
-                      child:
-                          const Text('Отмена'),
-                    ),
-                    FilledButton(
-                      onPressed: () =>
-                          Navigator.pop(
-                        context,
-                        true,
-                      ),
-                      child:
-                          const Text('Удалить'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (ok != true) return;
-
-              final db = await AppDb.db;
-
-              await db.delete(
-                'expenses',
-                where: 'car_id=?',
-                whereArgs: [car.id],
-              );
-
-              await db.delete(
-                'files',
-                where: 'car_id=?',
-                whereArgs: [car.id],
-              );
-
-              await db.delete(
-                'cars',
-                where: 'id=?',
-                whereArgs: [car.id],
-              );
-
-              if (!mounted) return;
-
-              Navigator.pop(context);
+                );
+              }
             }
 
             Future<void> addCategory() async {
-              final controller =
-                  TextEditingController();
+              final controller = TextEditingController();
 
-              final name =
-                  await showDialog<String>(
+              await showDialog(
                 context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text(
-                    'Новая категория',
-                  ),
-                  content: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    decoration:
-                        const InputDecoration(
-                      labelText: 'Название',
-                      hintText:
-                          'Например: Электрика',
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () =>
-                          Navigator.pop(context),
-                      child:
-                          const Text('Отмена'),
-                    ),
-                    FilledButton(
-                      onPressed: () =>
-                          Navigator.pop(
-                        context,
-                        controller.text.trim(),
+                builder: (dialogContext) {
+                  return AlertDialog(
+                    title: const Text('Новая категория'),
+                    content: TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Название',
                       ),
-                      child:
-                          const Text('Добавить'),
                     ),
-                  ],
-                ),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pop(dialogContext),
+                        child: const Text('Отмена'),
+                      ),
+                      FilledButton(
+                        onPressed: () async {
+                          final name = controller.text.trim();
+
+                          if (name.isNotEmpty) {
+                            try {
+                              await (await DB.open).insert(
+                                'categories',
+                                {'name': name},
+                              );
+                            } catch (_) {}
+                          }
+
+                          Navigator.pop(dialogContext);
+                          await load();
+                        },
+                        child: const Text('Создать'),
+                      ),
+                    ],
+                  );
+                },
               );
-
-              controller.dispose();
-
-              if (name == null ||
-                  name.trim().isEmpty) {
-                return;
-              }
-
-              final db = await AppDb.db;
-
-              await db.insert(
-                'categories',
-                {'name': name.trim()},
-                conflictAlgorithm:
-                    ConflictAlgorithm.ignore,
-              );
-
-              await loadDetails();
             }
 
             Future<void> addExpense() async {
@@ -837,167 +517,83 @@ jobs:
                 await save();
               }
 
-              if (car.id == null) return;
+              final amount = TextEditingController();
+              final note = TextEditingController();
 
-              if (categories.isEmpty) {
-                await loadDetails();
-              }
+              int? categoryId = categories.isEmpty
+                  ? null
+                  : categories.first['id'] as int;
 
-              int? selectedCategory;
-              final amount =
-                  TextEditingController();
-              final note =
-                  TextEditingController();
-
-              final result =
-                  await showDialog<bool>(
+              await showDialog(
                 context: context,
-                builder: (_) {
+                builder: (dialogContext) {
                   return StatefulBuilder(
-                    builder:
-                        (context, setDialogState) {
+                    builder: (context, setDialogState) {
                       return AlertDialog(
-                        title: const Text(
-                          'Добавить расход',
-                        ),
-                        content: SingleChildScrollView(
-                          child: Column(
-                            mainAxisSize:
-                                MainAxisSize.min,
-                            children: [
-                              DropdownButtonFormField<
-                                  int>(
-                                value:
-                                    selectedCategory,
-                                isExpanded: true,
-                                decoration:
-                                    const InputDecoration(
-                                  labelText:
-                                      'Категория',
-                                ),
-                                items: [
-                                  ...categories.map(
-                                    (c) =>
-                                        DropdownMenuItem<
-                                            int>(
-                                      value:
-                                          c['id']
-                                              as int,
-                                      child: Text(
-                                        '${c['name']}',
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                                onChanged: (value) {
-                                  setDialogState(() {
-                                    selectedCategory =
-                                        value;
-                                  });
-                                },
+                        title: const Text('Добавить расход'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            DropdownButtonFormField<int>(
+                              initialValue: categoryId,
+                              decoration: const InputDecoration(
+                                labelText: 'Категория',
                               ),
-                              const SizedBox(
-                                height: 12,
+                              items: categories.map((x) {
+                                return DropdownMenuItem<int>(
+                                  value: x['id'] as int,
+                                  child: Text('${x['name']}'),
+                                );
+                              }).toList(),
+                              onChanged: (v) {
+                                setDialogState(
+                                  () => categoryId = v,
+                                );
+                              },
+                            ),
+                            TextField(
+                              controller: amount,
+                              keyboardType:
+                                  TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Сумма',
                               ),
-                              TextField(
-                                controller: amount,
-                                keyboardType:
-                                    const TextInputType
-                                        .numberWithOptions(
-                                  decimal: true,
-                                ),
-                                decoration:
-                                    const InputDecoration(
-                                  labelText:
-                                      'Сумма',
-                                  suffixText: '₽',
-                                  border:
-                                      OutlineInputBorder(),
-                                ),
+                            ),
+                            TextField(
+                              controller: note,
+                              decoration: const InputDecoration(
+                                labelText: 'Комментарий',
                               ),
-                              const SizedBox(
-                                height: 12,
-                              ),
-                              TextField(
-                                controller: note,
-                                decoration:
-                                    const InputDecoration(
-                                  labelText:
-                                      'Комментарий',
-                                  border:
-                                      OutlineInputBorder(),
-                                ),
-                                maxLines: 2,
-                              ),
-                              const SizedBox(
-                                height: 8,
-                              ),
-                              Align(
-                                alignment:
-                                    Alignment.centerLeft,
-                                child: TextButton.icon(
-                                  onPressed:
-                                      () async {
-                                    await addCategory();
-                                    await loadDetails();
-
-                                    if (!mounted) {
-                                      return;
-                                    }
-
-                                    setDialogState(
-                                      () {},
-                                    );
-                                  },
-                                  icon: const Icon(
-                                    Icons.add,
-                                  ),
-                                  label:
-                                      const Text(
-                                    'Создать категорию',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                         actions: [
                           TextButton(
                             onPressed: () =>
-                                Navigator.pop(
-                              context,
-                              false,
-                            ),
-                            child:
-                                const Text('Отмена'),
+                                Navigator.pop(dialogContext),
+                            child: const Text('Отмена'),
                           ),
                           FilledButton(
-                            onPressed: () {
-                              if (selectedCategory ==
-                                      null ||
-                                  toMoney(
-                                        amount.text,
-                                      ) <=
-                                      0) {
-                                ScaffoldMessenger
-                                    .of(context)
-                                    .showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Выберите категорию и укажите сумму',
-                                    ),
-                                  ),
+                            onPressed: () async {
+                              if (categoryId != null &&
+                                  val(amount.text) > 0) {
+                                await (await DB.open).insert(
+                                  'expenses',
+                                  {
+                                    'carId': car.id,
+                                    'categoryId': categoryId,
+                                    'amount': val(amount.text),
+                                    'note': note.text,
+                                    'date':
+                                        DateTime.now().toIso8601String(),
+                                  },
                                 );
-                                return;
                               }
 
-                              Navigator.pop(
-                                context,
-                                true,
-                              );
+                              Navigator.pop(dialogContext);
+                              await load();
                             },
-                            child:
-                                const Text('Добавить'),
+                            child: const Text('Добавить'),
                           ),
                         ],
                       );
@@ -1005,63 +601,18 @@ jobs:
                   );
                 },
               );
-
-              if (result != true ||
-                  selectedCategory == null) {
-                amount.dispose();
-                note.dispose();
-                return;
-              }
-
-              final db = await AppDb.db;
-
-              await db.insert(
-                'expenses',
-                {
-                  'car_id': car.id,
-                  'category_id':
-                      selectedCategory,
-                  'amount':
-                      toMoney(amount.text),
-                  'note': note.text.trim(),
-                },
-              );
-
-              amount.dispose();
-              note.dispose();
-
-              await loadDetails();
             }
 
-            Future<void> deleteExpense(
-              int id,
-            ) async {
-              final db = await AppDb.db;
-
-              await db.delete(
-                'expenses',
-                where: 'id=?',
-                whereArgs: [id],
-              );
-
-              await loadDetails();
-            }
-
-            Future<void> addImage(
-              ImageSource source,
-            ) async {
+            Future<void> addImage(bool camera) async {
               if (car.id == null) {
                 await save();
               }
 
-              if (car.id == null) return;
-
-              final picker = ImagePicker();
-
               final image =
-                  await picker.pickImage(
-                source: source,
-                imageQuality: 85,
+                  await ImagePicker().pickImage(
+                source: camera
+                    ? ImageSource.camera
+                    : ImageSource.gallery,
               );
 
               if (image == null) return;
@@ -1069,42 +620,25 @@ jobs:
               final dir =
                   await getApplicationDocumentsDirectory();
 
-              final carDir = Directory(
-                p.join(
-                  dir.path,
-                  'cars',
-                  '${car.id}',
-                ),
+              final target = p.join(
+                dir.path,
+                '${DateTime.now().millisecondsSinceEpoch}_'
+                '${p.basename(image.path)}',
               );
 
-              await carDir.create(
-                recursive: true,
-              );
+              await File(image.path).copy(target);
 
-              final fileName =
-                  '${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-              final destination = p.join(
-                carDir.path,
-                fileName,
-              );
-
-              await File(image.path)
-                  .copy(destination);
-
-              final db = await AppDb.db;
-
-              await db.insert(
+              await (await DB.open).insert(
                 'files',
                 {
-                  'car_id': car.id,
-                  'name': fileName,
-                  'path': destination,
+                  'carId': car.id,
+                  'path': target,
+                  'name': p.basename(target),
                   'type': 'image',
                 },
               );
 
-              await loadDetails();
+              await load();
             }
 
             Future<void> addFile() async {
@@ -1112,12 +646,8 @@ jobs:
                 await save();
               }
 
-              if (car.id == null) return;
-
               final result =
-                  await FilePicker.platform.pickFiles(
-                withData: false,
-              );
+                  await FilePicker.platform.pickFiles();
 
               if (result == null ||
                   result.files.single.path == null) {
@@ -1125,50 +655,338 @@ jobs:
               }
 
               final source =
-                  result.files.single.path!;
+                  File(result.files.single.path!);
 
               final dir =
                   await getApplicationDocumentsDirectory();
 
-              final carDir = Directory(
-                p.join(
-                  dir.path,
-                  'cars',
-                  '${car.id}',
-                  'files',
+              final target = p.join(
+                dir.path,
+                '${DateTime.now().millisecondsSinceEpoch}_'
+                '${result.files.single.name}',
+              );
+
+              await source.copy(target);
+
+              await (await DB.open).insert(
+                'files',
+                {
+                  'carId': car.id,
+                  'path': target,
+                  'name': result.files.single.name,
+                  'type': 'file',
+                },
+              );
+
+              await load();
+            }
+
+            double get invested {
+              return car.purchasePrice +
+                  expenses.fold(
+                    0.0,
+                    (sum, x) =>
+                        sum + (x['amount'] as num).toDouble(),
+                  );
+            }
+                        @override
+            Widget build(BuildContext context) {
+              final profit = val(sale.text) - invested;
+
+              return Scaffold(
+                appBar: AppBar(
+                  title: Text(
+                    car.id == null
+                        ? 'Новый автомобиль'
+                        : 'Автомобиль',
+                  ),
+                ),
+                body: ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: field(
+                            make,
+                            'Марка',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: field(
+                            model,
+                            'Модель',
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: field(
+                            year,
+                            'Год',
+                            number: true,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: field(
+                            mileage,
+                            'Пробег',
+                            number: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    field(vin, 'VIN'),
+                    field(plate, 'Госномер'),
+                    field(date, 'Дата покупки'),
+                    field(
+                      price,
+                      'Цена покупки',
+                      number: true,
+                    ),
+                    field(seller, 'Продавец'),
+                    field(
+                      notes,
+                      'Заметки',
+                      lines: 3,
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue:
+                          statuses.contains(car.status)
+                              ? car.status
+                              : statuses.first,
+                      decoration: const InputDecoration(
+                        labelText: 'Статус',
+                      ),
+                      items: statuses.map((x) {
+                        return DropdownMenuItem(
+                          value: x,
+                          child: Text(x),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          car.status =
+                              v ?? car.status;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    field(
+                      sale,
+                      'Цена продажи',
+                      number: true,
+                    ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Финансы',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Цена покупки: '
+                              '${money(car.purchasePrice)} ₽',
+                            ),
+                            Text(
+                              'Расходы: '
+                              '${money(
+                                invested -
+                                    car.purchasePrice,
+                              )} ₽',
+                            ),
+                            Text(
+                              'Всего вложено: '
+                              '${money(invested)} ₽',
+                            ),
+                            Text(
+                              'Прибыль: '
+                              '${money(profit)} ₽',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: addExpense,
+                            icon: const Icon(Icons.add),
+                            label: const Text(
+                              'Расход',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: addCategory,
+                          tooltip:
+                              'Новая категория',
+                          icon: const Icon(
+                            Icons.category,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ...expenses.map(
+                      (x) => ListTile(
+                        leading: const Icon(
+                          Icons.receipt_long,
+                        ),
+                        title: Text(
+                          '${x['category']}: '
+                          '${money(
+                            x['amount'] as num,
+                          )} ₽',
+                        ),
+                        subtitle: Text(
+                          '${x['note'] ?? ''}',
+                        ),
+                      ),
+                    ),
+                    const Divider(),
+                    const Text(
+                      'Фото и документы',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                addImage(false),
+                            icon: const Icon(
+                              Icons.photo,
+                            ),
+                            label: const Text(
+                              'Галерея',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                addImage(true),
+                            icon: const Icon(
+                              Icons.camera_alt,
+                            ),
+                            label: const Text(
+                              'Камера',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: addFile,
+                            icon: const Icon(
+                              Icons.attach_file,
+                            ),
+                            label: const Text(
+                              'Файл',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    ...files.map(
+                      (x) => ListTile(
+                        leading: Icon(
+                          x['type'] == 'image'
+                              ? Icons.image
+                              : Icons.description,
+                        ),
+                        title: Text(
+                          '${x['name']}',
+                        ),
+                        onTap: () {
+                          OpenFilex.open(
+                            '${x['path']}',
+                          );
+                        },
+                      ),
+                    ),
+                                        const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: save,
+                      icon: const Icon(Icons.save),
+                      label: const Text(
+                        'Сохранить автомобиль',
+                      ),
+                    ),
+                  ],
                 ),
               );
+            }
 
-              await carDir.create(
-                recursive: true,
+            Widget field(
+              TextEditingController controller,
+              String label, {
+              bool number = false,
+              int lines = 1,
+            }) {
+              return Padding(
+                padding:
+                    const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: controller,
+                  maxLines: lines,
+                  keyboardType: number
+                      ? TextInputType.number
+                      : TextInputType.text,
+                  decoration: InputDecoration(
+                    labelText: label,
+                    border:
+                        const OutlineInputBorder(),
+                  ),
+                  onChanged: (_) {
+                    if (label == 'Цена продажи') {
+                      setState(() {});
+                    }
+                  },
+                ),
               );
-
-              final originalName =
-                  result.files.single.name;
-
-              final destination = p.join(
-                carDir.path,
-                '${DateTime.now().millisecondsSinceEpoch}_$originalName',
-              );
-
-              await File(source)
-                  .copy(destination);
-
-              final db = await AppDb.db;
-
-              await db.insert(
-                'fil
-                          }
+            }
+          }
           DART
 
       - name: Get dependencies
-        run: flutter pub get
+        shell: bash
+        run: |
+          set -e
+          flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        shell: bash
+        run: |
+          set -e
+          flutter analyze
 
       - name: Build APK
-        run: flutter build apk --release
+        shell: bash
+        run: |
+          set -e
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
