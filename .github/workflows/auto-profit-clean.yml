@@ -48,7 +48,7 @@ jobs:
       - name: Create app source
         run: |
           cat > lib/main.dart <<'EOF'
-import 'package:flutter/material.dart';
+          import 'package:flutter/material.dart';
 
 void main() {
   runApp(const AutoProfitApp());
@@ -429,11 +429,11 @@ String money(double value) {
   return '${value.toStringAsFixed(0)} ₽';
 }
           EOF
-                - name: Create car forms
+
+      - name: Create car forms
         run: |
           cat >> lib/main.dart <<'EOF'
-
-class CarFormScreen extends StatefulWidget {
+          class CarFormScreen extends StatefulWidget {
   final void Function(Car car) onSave;
 
   const CarFormScreen({
@@ -1038,28 +1038,28 @@ class _CarDetailsScreenState
 }
 
           EOF
-                - name: Get dependencies
-        run: |
-          flutter pub get
+          - name: Get dependencies
+  run: |
+    flutter pub get
 
-      - name: Analyze project
-        run: |
-          flutter analyze
+- name: Analyze project
+  run: |
+    flutter analyze
 
-      - name: Build APK
-        run: |
-          flutter build apk --release
+- name: Build APK
+  run: |
+    flutter build apk --release
 
-      - name: Check APK
-        run: |
-          echo "Проверяем APK..."
-          ls -lah build/app/outputs/flutter-apk/
-          test -f build/app/outputs/flutter-apk/app-release.apk
-          echo "APK успешно создан."
+- name: Check APK
+  run: |
+    echo "Проверяем APK..."
+    ls -lah build/app/outputs/flutter-apk/
+    test -f build/app/outputs/flutter-apk/app-release.apk
+    echo "APK успешно создан."
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: auto-profit-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+- name: Upload APK
+  uses: actions/upload-artifact@v4
+  with:
+    name: auto-profit-apk
+    path: build/app/outputs/flutter-apk/app-release.apk
+    if-no-files-found: error
