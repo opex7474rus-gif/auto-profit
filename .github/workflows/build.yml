@@ -22,9 +22,16 @@ jobs:
         run: |
           set -e
 
+          rm -rf lib
+          rm -rf test
+
           flutter create . \
             --platforms=android \
             --project-name auto_profit
+
+          rm -rf lib
+          rm -rf test
+          mkdir -p lib
 
           cat > pubspec.yaml <<'EOF'
           name: auto_profit
@@ -55,11 +62,6 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
-
-          rm -rf lib
-          rm -rf test
-          mkdir -p lib
-          mkdir -p test
 
           cat > lib/main.dart <<'DART'
           import 'dart:io';
