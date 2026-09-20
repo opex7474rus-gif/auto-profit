@@ -56,8 +56,10 @@ jobs:
             uses-material-design: true
           EOF
 
-          rm -f test/widget_test.dart
+          rm -rf lib
+          rm -rf test
           mkdir -p lib
+          mkdir -p test
 
           cat > lib/main.dart <<'DART'
           import 'dart:io';
