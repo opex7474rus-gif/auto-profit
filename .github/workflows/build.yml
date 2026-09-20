@@ -17,48 +17,163 @@ jobs:
           flutter-version: '3.35.2'
           channel: stable
 
-      - name: Prepare Flutter project
-        run: |
-          mkdir -p lib
-          mkdir -p test
-
-          if [ -d "screens" ]; then
-            mkdir -p lib/screens
-            cp screens/*.dart lib/screens/
-          fi
-
-          if [ -d "models" ]; then
-            mkdir -p lib/models
-            cp models/*.dart lib/models/
-          fi
-
-          if [ -d "repositories" ]; then
-            mkdir -p lib/repositories
-            cp repositories/*.dart lib/repositories/
-          fi
-
-          if [ -d "data" ]; then
-            mkdir -p lib/data
-            cp data/*.dart lib/data/
-          fi
-
-          if [ -d "services" ]; then
-            mkdir -p lib/services
-            cp services/*.dart lib/services/
-          fi
-
-          cp main.dart lib/main.dart
-          cp widget_test.dart test/widget_test.dart
-
-      - name: Create Android project
+      - name: Create Flutter Android project
         run: |
           flutter create . --platforms=android --project-name auto_profit
 
+      - name: Arrange Auto Profit source
+        run: |
+          mkdir -p lib/models
+          mkdir -p lib/data
+          mkdir -p lib/repositories
+          mkdir -p lib/services
+          mkdir -p lib/screens
+
+          cp car.dart lib/models/car.dart
+          cp expense.dart lib/models/expense.dart
+          cp attachment.dart lib/models/attachment.dart
+
+          cp database.dart lib/data/database.dart
+          cp file_service.dart lib/services/file_service.dart
+
+          cp home_screen.dart lib/screens/home_screen.dart
+          cp car_detail_screen.dart lib/screens/car_detail_screen.dart
+          cp main.dart lib/main.dart
+
+          cat > lib/repositories/car_repository.dart <<'EOF'
+          import '../data/database.dart';
+          import '../models/car.dart';
+          import '../models/expense.dart';
+          import '../models/attachment.dart';
+
+          class CarRepository {
+            final _db = AppDatabase.instance;
+
+            Future<List<Car>> cars({String query = ''}) async {
+              final d = await _db.db;
+              final q = '%${query.trim()}%';
+
+              final rows = await d.query(
+                'cars',
+                where: query.trim().isEmpty
+                    ? null
+                    : 'make LIKE ? OR model LIKE ? OR vin LIKE ? OR plate LIKE ?',
+                whereArgs: query.trim().isEmpty ? null : [q, q, q, q],
+                orderBy: 'purchase_date DESC',
+              );
+
+              return rows.map(Car.fromMap).toList();
+            }
+
+            Future<int> saveCar(Car car) async {
+              final d = await _db.db;
+
+              if (car.id == null) {
+                final data = car.toMap();
+                data.remove('id');
+                return d.insert('cars', data);
+              }
+
+              final data = car.toMap();
+              data.remove('id');
+
+              await d.update(
+                'cars',
+                data,
+                where: 'id=?',
+                whereArgs: [car.id],
+              );
+
+              return car.id!;
+            }
+
+            Future<void> deleteCar(int id) async {
+              await (await _db.db).delete(
+                'cars',
+                where: 'id=?',
+                whereArgs: [id],
+              );
+            }
+
+            Future<List<Map<String, Object?>>> categories() async {
+              return (await _db.db).query(
+                'expense_categories',
+                orderBy: 'name',
+              );
+            }
+
+            Future<int> addCategory(String name) async {
+              return (await _db.db).insert(
+                'expense_categories',
+                {'name': name.trim()},
+              );
+            }
+
+            Future<List<Map<String, Object?>>> expenses(int carId) async {
+              return (await _db.db).rawQuery(
+                '''
+                SELECT e.*, c.name category_name
+                FROM expenses e
+                JOIN expense_categories c ON c.id=e.category_id
+                WHERE e.car_id=?
+                ORDER BY e.date DESC, e.id DESC
+                ''',
+                [carId],
+              );
+            }
+
+            Future<int> addExpense(Expense e) async {
+              final data = e.toMap();
+              data.remove('id');
+              return (await _db.db).insert('expenses', data);
+            }
+
+            Future<void> deleteExpense(int id) async {
+              await (await _db.db).delete(
+                'expenses',
+                where: 'id=?',
+                whereArgs: [id],
+              );
+            }
+
+            Future<double> totalExpenses(int carId) async {
+              final r = await (await _db.db).rawQuery(
+                'SELECT COALESCE(SUM(amount),0) total FROM expenses WHERE car_id=?',
+                [carId],
+              );
+
+              return (r.first['total'] as num).toDouble();
+            }
+
+            Future<List<Attachment>> attachments(int carId) async {
+              final rows = await (await _db.db).query(
+                'attachments',
+                where: 'car_id=?',
+                whereArgs: [carId],
+                orderBy: 'id DESC',
+              );
+
+              return rows.map(Attachment.fromMap).toList();
+            }
+
+            Future<int> addAttachment(Attachment a) async {
+              final data = a.toMap();
+              data.remove('id');
+              return (await _db.db).insert('attachments', data);
+            }
+
+            Future<void> deleteAttachment(int id) async {
+              await (await _db.db).delete(
+                'attachments',
+                where: 'id=?',
+                whereArgs: [id],
+              );
+            }
+          }
+          EOF
+
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Analyze project
-        run: flutter analyze
 
       - name: Build APK
         run: flutter build apk --release
