@@ -11,22 +11,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check files
-        run: |
-          ls -la
-          file auto_profit_cloud_build.zip
-
-      - name: Extract project
-        run: |
-          unzip -q auto_profit_cloud_build.zip
-          cp -r auto_profit_cloud/* .
-          rm -rf auto_profit_cloud auto_profit_cloud_build.zip
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.2'
           channel: stable
+
+      - name: Prepare Flutter project
+        run: |
+          mkdir -p lib
+          mkdir -p test
+
+          if [ -d "screens" ]; then
+            mkdir -p lib/screens
+            cp screens/*.dart lib/screens/
+          fi
+
+          if [ -d "models" ]; then
+            mkdir -p lib/models
+            cp models/*.dart lib/models/
+          fi
+
+          if [ -d "repositories" ]; then
+            mkdir -p lib/repositories
+            cp repositories/*.dart lib/repositories/
+          fi
+
+          if [ -d "data" ]; then
+            mkdir -p lib/data
+            cp data/*.dart lib/data/
+          fi
+
+          if [ -d "services" ]; then
+            mkdir -p lib/services
+            cp services/*.dart lib/services/
+          fi
+
+          cp main.dart lib/main.dart
+          cp widget_test.dart test/widget_test.dart
 
       - name: Create Android project
         run: |
@@ -34,6 +56,9 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
 
       - name: Build APK
         run: flutter build apk --release
