@@ -1,23 +1,14 @@
 name: auto_profit
-description: Авто Profit — офлайн-учёт автомобилей, расходов и прибыли для автоперекупа.
-publish_to: 'none'
+description: Авто Профит
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.8
-  sqflite: ^2.3.3+1
-  path: ^1.9.0
-  path_provider: ^2.1.4
-  image_picker: ^1.1.2
-  file_picker: ^8.1.2
-  open_filex: ^4.5.0
-  intl: ^0.19.0
-  uuid: ^4.5.1
 
 flutter:
   uses-material-design: true
