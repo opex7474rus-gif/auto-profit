@@ -3,13 +3,18 @@ name: Auto Profit CLEAN BUILD
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  clean:
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -17,7 +22,7 @@ jobs:
           flutter-version: '3.35.2'
           channel: stable
 
-      - name: Create clean Flutter project
+      - name: Completely remove old project files
         shell: bash
         run: |
           set -e
@@ -25,13 +30,11 @@ jobs:
           rm -rf lib
           rm -rf test
           rm -rf android
-
-          flutter create . \
-            --platforms=android \
-            --project-name auto_profit
-
-          rm -rf lib
-          rm -rf test
+          rm -rf ios
+          rm -rf macos
+          rm -rf linux
+          rm -rf windows
+          rm -rf web
 
           mkdir -p lib
 
@@ -64,6 +67,15 @@ jobs:
           flutter:
             uses-material-design: true
           EOF
+
+          flutter create . \
+            --platforms=android \
+            --project-name auto_profit
+
+          rm -rf lib
+          rm -rf test
+
+          mkdir -p lib
 
           cat > lib/main.dart <<'DART'
           import 'dart:io';
@@ -932,70 +944,240 @@ jobs:
                         },
                       ),
                     ),
-                                        const SizedBox(height: 12),
-                    FilledButton.icon(
-                      onPressed: save,
-                      icon: const Icon(Icons.save),
-                      label: const Text(
-                        'Сохранить автомобиль',
+                                @override
+            Widget build(BuildContext context) {
+              final profit = val(sale.text) - invested;
+
+              return Scaffold(
+                appBar: AppBar(
+                  title: Text(
+                    car.id == null
+                        ? 'Новый автомобиль'
+                        : 'Автомобиль',
+                  ),
+                ),
+                body: ListView(
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: field(
+                            make,
+                            'Марка',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: field(
+                            model,
+                            'Модель',
+                          ),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: field(
+                            year,
+                            'Год',
+                            number: true,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: field(
+                            mileage,
+                            'Пробег',
+                            number: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                    field(vin, 'VIN'),
+                    field(plate, 'Госномер'),
+                    field(date, 'Дата покупки'),
+                    field(
+                      price,
+                      'Цена покупки',
+                      number: true,
+                    ),
+                    field(seller, 'Продавец'),
+                    field(
+                      notes,
+                      'Заметки',
+                      lines: 3,
+                    ),
+                    DropdownButtonFormField<String>(
+                      initialValue:
+                          statuses.contains(car.status)
+                              ? car.status
+                              : statuses.first,
+                      decoration: const InputDecoration(
+                        labelText: 'Статус',
+                      ),
+                      items: statuses.map((x) {
+                        return DropdownMenuItem(
+                          value: x,
+                          child: Text(x),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          car.status =
+                              v ?? car.status;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    field(
+                      sale,
+                      'Цена продажи',
+                      number: true,
+                    ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Финансы',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Цена покупки: '
+                              '${money(car.purchasePrice)} ₽',
+                            ),
+                            Text(
+                              'Расходы: '
+                              '${money(
+                                invested -
+                                    car.purchasePrice,
+                              )} ₽',
+                            ),
+                            Text(
+                              'Всего вложено: '
+                              '${money(invested)} ₽',
+                            ),
+                            Text(
+                              'Прибыль: '
+                              '${money(profit)} ₽',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              );
-            }
-
-            Widget field(
-              TextEditingController controller,
-              String label, {
-              bool number = false,
-              int lines = 1,
-            }) {
-              return Padding(
-                padding:
-                    const EdgeInsets.only(bottom: 10),
-                child: TextField(
-                  controller: controller,
-                  maxLines: lines,
-                  keyboardType: number
-                      ? TextInputType.number
-                      : TextInputType.text,
-                  decoration: InputDecoration(
-                    labelText: label,
-                    border:
-                        const OutlineInputBorder(),
-                  ),
-                  onChanged: (_) {
-                    if (label == 'Цена продажи') {
-                      setState(() {});
-                    }
-                  },
-                ),
-              );
-            }
-          }
-          DART
-
-      - name: Get dependencies
-        shell: bash
-        run: |
-          set -e
-          flutter pub get
-
-      - name: Analyze
-        shell: bash
-        run: |
-          set -e
-          flutter analyze
-
-      - name: Build APK
-        shell: bash
-        run: |
-          set -e
-          flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: auto-profit-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: addExpense,
+                            icon: const Icon(Icons.add),
+                            label: const Text(
+                              'Расход',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: addCategory,
+                          tooltip:
+                              'Новая категория',
+                          icon: const Icon(
+                            Icons.category,
+                          ),
+                        ),
+                      ],
+                    ),
+                    ...expenses.map(
+                      (x) => ListTile(
+                        leading: const Icon(
+                          Icons.receipt_long,
+                        ),
+                        title: Text(
+                          '${x['category']}: '
+                          '${money(
+                            x['amount'] as num,
+                          )} ₽',
+                        ),
+                        subtitle: Text(
+                          '${x['note'] ?? ''}',
+                        ),
+                      ),
+                    ),
+                    const Divider(),
+                    const Text(
+                      'Фото и документы',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                addImage(false),
+                            icon: const Icon(
+                              Icons.photo,
+                            ),
+                            label: const Text(
+                              'Галерея',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                addImage(true),
+                            icon: const Icon(
+                              Icons.camera_alt,
+                            ),
+                            label: const Text(
+                              'Камера',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: addFile,
+                            icon: const Icon(
+                              Icons.attach_file,
+                            ),
+                            label: const Text(
+                              'Файл',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    ...files.map(
+                      (x) => ListTile(
+                        leading: Icon(
+                          x['type'] == 'image'
+                              ? Icons.image
+                              : Icons.description,
+                        ),
+                        title: Text(
+                          '${x['name']}',
+                        ),
+                        onTap: () {
+                          OpenFilex.open(
+                            '${x['path']}',
+                          );
+                        },
+                      ),
+                    ),
