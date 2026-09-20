@@ -44,7 +44,8 @@ jobs:
           rm -rf lib
           rm -rf test
           mkdir -p lib
-                - name: Create app source
+
+      - name: Create app source
         run: |
           cat > lib/main.dart <<'EOF'
 import 'package:flutter/material.dart';
