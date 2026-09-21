@@ -37,10 +37,50 @@ const List<String> kExpenseCategories = [
 const int kStaleDays = 30;
 const int kReminderDays = 3;
 const String kLastCheckKey = 'last_check_v1';
+const int kTrashDays = 30;
+
+const Map<String, List<String>> kCarCatalog = {
+  'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora', '2107', '2110', '2114', '2115'],
+  'Toyota': ['Camry', 'Corolla', 'RAV4', 'Land Cruiser', 'Highlander', 'Prius', 'Avensis'],
+  'Kia': ['Rio', 'Sportage', 'Optima', 'Ceed', 'Sorento', 'Soul', 'Cerato'],
+  'Hyundai': ['Solaris', 'Creta', 'Tucson', 'Santa Fe', 'Elantra', 'i30', 'ix35', 'Accent'],
+  'Volkswagen': ['Polo', 'Tiguan', 'Passat', 'Golf', 'Jetta', 'Touareg'],
+  'Renault': ['Logan', 'Duster', 'Sandero', 'Kaptur', 'Arkana', 'Megane'],
+  'Nissan': ['Qashqai', 'X-Trail', 'Juke', 'Almera', 'Teana', 'Murano', 'Note'],
+  'Ford': ['Focus', 'Mondeo', 'Kuga', 'Explorer', 'Fiesta', 'Transit'],
+  'Skoda': ['Octavia', 'Rapid', 'Superb', 'Kodiaq', 'Karoq', 'Fabia', 'Yeti'],
+  'BMW': ['3 серия', '5 серия', '7 серия', 'X1', 'X3', 'X5', 'X6'],
+  'Mercedes-Benz': ['C-класс', 'E-класс', 'S-класс', 'GLA', 'GLC', 'GLE', 'ML', 'Sprinter'],
+  'Audi': ['A3', 'A4', 'A6', 'A8', 'Q3', 'Q5', 'Q7'],
+  'Mazda': ['3', '6', 'CX-5', 'CX-9', 'CX-30'],
+  'Chevrolet': ['Cruze', 'Aveo', 'Lacetti', 'Niva', 'Captiva', 'Malibu', 'Spark'],
+  'Mitsubishi': ['Lancer', 'Outlander', 'ASX', 'Pajero', 'L200', 'Galant'],
+  'Opel': ['Astra', 'Corsa', 'Insignia', 'Zafira', 'Mokka', 'Antara'],
+  'Peugeot': ['308', '408', '3008', '4008', '5008', 'Partner'],
+  'Citroen': ['C4', 'C5', 'Berlingo', 'C3', 'C-Elysee'],
+  'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'Fit', 'Jazz'],
+  'Suzuki': ['Vitara', 'SX4', 'Jimny', 'Grand Vitara', 'Swift'],
+  'Chery': ['Tiggo 4', 'Tiggo 7', 'Tiggo 8', 'Arrizo 5', 'Arrizo 8'],
+  'Haval': ['H6', 'H9', 'Jolion', 'F7', 'Dargo', 'H5'],
+  'Geely': ['Coolray', 'Atlas', 'Tugella', 'Monjaro', 'Emgrand'],
+  'Datsun': ['on-DO', 'mi-DO'],
+  'Daewoo': ['Nexia', 'Matiz', 'Gentra'],
+  'Ravon': ['Nexia R3', 'R2', 'R4'],
+  'УАЗ': ['Patriot', 'Hunter', 'Profi', '452'],
+  'ГАЗ': ['Газель', 'Соболь', 'Волга'],
+};
+
+const Map<String, String> kDefaultBuyerData = {
+  'fio': '',
+  'passport': '',
+  'address': '',
+  'phone': '',
+};
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   themeNotifier.value = await Storage.loadTheme();
+  await Storage.cleanupTrash();
   runApp(const AutoProfitApp());
 }
 
@@ -56,9 +96,7 @@ class AutoProfitApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'Авто Профит',
           theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-            ),
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
             useMaterial3: true,
           ),
           darkTheme: ThemeData(
@@ -79,7 +117,7 @@ class Attachment {
   String id;
   String name;
   String path;
-  String type; // 'image' | 'pdf' | 'other'
+  String type;
   String addedAt;
 
   Attachment({
@@ -90,15 +128,13 @@ class Attachment {
     required this.addedAt,
   });
 
-  factory Attachment.fromJson(Map<String, dynamic> json) {
-    return Attachment(
-      id: (json['id'] ?? '') as String,
-      name: (json['name'] ?? '') as String,
-      path: (json['path'] ?? '') as String,
-      type: (json['type'] ?? 'other') as String,
-      addedAt: (json['addedAt'] ?? '') as String,
-    );
-  }
+  factory Attachment.fromJson(Map<String, dynamic> json) => Attachment(
+        id: (json['id'] ?? '') as String,
+        name: (json['name'] ?? '') as String,
+        path: (json['path'] ?? '') as String,
+        type: (json['type'] ?? 'other') as String,
+        addedAt: (json['addedAt'] ?? '') as String,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -107,6 +143,30 @@ class Attachment {
         'type': type,
         'addedAt': addedAt,
       };
+}
+
+class TrashEntry {
+  Car car;
+  String deletedAt;
+
+  TrashEntry({required this.car, required this.deletedAt});
+
+  factory TrashEntry.fromJson(Map<String, dynamic> json) => TrashEntry(
+        car: Car.fromJson(json['car'] as Map<String, dynamic>),
+        deletedAt: (json['deletedAt'] ?? '') as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'car': car.toJson(),
+        'deletedAt': deletedAt,
+      };
+
+  int get daysLeft {
+    final d = DateTime.tryParse(deletedAt);
+    if (d == null) return 0;
+    final diff = kTrashDays - DateTime.now().difference(d).inDays;
+    return diff < 0 ? 0 : diff;
+  }
 }
 
 class Car {
@@ -208,6 +268,29 @@ class Car {
         'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 
+  Car duplicate() => Car(
+        id: newId(),
+        make: make,
+        model: model,
+        year: year,
+        vin: '',
+        plate: '',
+        mileage: mileage,
+        purchasePrice: purchasePrice,
+        purchaseDate: todayIso(),
+        status: 'Куплен',
+        statusChangedAt: todayIso(),
+        seller: seller,
+        sellerPhone: sellerPhone,
+        sellerAddress: sellerAddress,
+        notes: notes,
+        salePrice: '',
+        saleDate: '',
+        expenses: [],
+        photos: [],
+        attachments: [],
+      );
+
   double get purchase =>
       double.tryParse(purchasePrice.replaceAll(',', '.')) ?? 0;
 
@@ -270,14 +353,12 @@ class Expense {
     required this.note,
   });
 
-  factory Expense.fromJson(Map<String, dynamic> json) {
-    return Expense(
-      id: (json['id'] ?? '') as String,
-      category: (json['category'] ?? 'Прочее') as String,
-      amount: ((json['amount'] ?? 0) as num).toDouble(),
-      note: (json['note'] ?? '') as String,
-    );
-  }
+  factory Expense.fromJson(Map<String, dynamic> json) => Expense(
+        id: (json['id'] ?? '') as String,
+        category: (json['category'] ?? 'Прочее') as String,
+        amount: ((json['amount'] ?? 0) as num).toDouble(),
+        note: (json['note'] ?? '') as String,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -286,10 +367,12 @@ class Expense {
         'note': note,
       };
 }
-
 class Storage {
   static const _key = 'cars_v1';
+  static const _trashKey = 'cars_trash_v1';
   static const _themeKey = 'theme_mode_v1';
+  static const _sellerKey = 'seller_data_v1';
+  static const _buyerKey = 'buyer_data_v1';
 
   static Future<List<Car>> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -311,6 +394,56 @@ class Storage {
       _key,
       jsonEncode(cars.map((c) => c.toJson()).toList()),
     );
+  }
+
+  static Future<List<TrashEntry>> loadTrash() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_trashKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => TrashEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveTrash(List<TrashEntry> trash) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _trashKey,
+      jsonEncode(trash.map((t) => t.toJson()).toList()),
+    );
+  }
+
+  static Future<void> cleanupTrash() async {
+    final trash = await loadTrash();
+    final now = DateTime.now();
+    final cleaned = <TrashEntry>[];
+    for (final t in trash) {
+      final d = DateTime.tryParse(t.deletedAt);
+      if (d == null) continue;
+      if (now.difference(d).inDays < kTrashDays) {
+        cleaned.add(t);
+      } else {
+        // удаляем файлы
+        for (final path in t.car.photos) {
+          try {
+            final f = File(path);
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+        }
+        for (final a in t.car.attachments) {
+          try {
+            final f = File(a.path);
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+        }
+      }
+    }
+    await saveTrash(cleaned);
   }
 
   static Future<ThemeMode> loadTheme() async {
@@ -335,6 +468,38 @@ class Storage {
             : 'system';
     await prefs.setString(_themeKey, raw);
   }
+
+  static Future<Map<String, String>> loadPartyData(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) return Map.from(kDefaultBuyerData);
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {
+      return Map.from(kDefaultBuyerData);
+    }
+  }
+
+  static Future<void> savePartyData(
+    String key,
+    Map<String, String> data,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(data));
+  }
+
+  static Future<Map<String, String>> loadSellerData() =>
+      loadPartyData(_sellerKey);
+
+  static Future<void> saveSellerData(Map<String, String> data) =>
+      savePartyData(_sellerKey, data);
+
+  static Future<Map<String, String>> loadBuyerData() =>
+      loadPartyData(_buyerKey);
+
+  static Future<void> saveBuyerData(Map<String, String> data) =>
+      savePartyData(_buyerKey, data);
 }
 
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
@@ -368,6 +533,18 @@ String dateToIso(DateTime d) {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
+
+List<String> get kYearList {
+  final now = DateTime.now().year;
+  final years = <String>[];
+  for (int y = now + 1; y >= 1990; y--) {
+    years.add(y.toString());
+  }
+  return years;
+}
+
+bool isSameMonth(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month;
 class MonthStat {
   final String label;
   final double profit;
@@ -394,21 +571,28 @@ class Analytics {
   List<Car> get stockCars => cars.where((c) => !c.isSold).toList();
   List<Car> get staleCars => cars.where((c) => c.isStale).toList();
 
-  double get totalPurchase =>
-      cars.fold(0, (s, c) => s + c.purchase);
+  List<Car> get soldThisMonth => soldCars.where((c) {
+        final d = c.saleDateTime;
+        if (d == null) return false;
+        return isSameMonth(d, DateTime.now());
+      }).toList();
 
+  int get soldThisMonthCount => soldThisMonth.length;
+  int get soldAllTimeCount => soldCars.length;
+
+  double get profitThisMonth =>
+      soldThisMonth.fold(0.0, (s, c) => s + c.profit);
+
+  double get totalPurchase => cars.fold(0, (s, c) => s + c.purchase);
   double get totalPurchaseStock =>
       stockCars.fold(0, (s, c) => s + c.purchase);
-
   double get totalPurchaseSold =>
       soldCars.fold(0, (s, c) => s + c.purchase);
 
   double get totalExpenses =>
       cars.fold(0, (s, c) => s + c.expensesTotal);
-
   double get totalExpensesStock =>
       stockCars.fold(0, (s, c) => s + c.expensesTotal);
-
   double get totalExpensesSold =>
       soldCars.fold(0, (s, c) => s + c.expensesTotal);
 
@@ -424,25 +608,22 @@ class Analytics {
   double get totalProfit =>
       soldCars.fold(0, (s, c) => s + c.profit);
 
-  double get averageProfit => soldCars.isEmpty
-      ? 0
-      : totalProfit / soldCars.length;
+  double get averageProfit =>
+      soldCars.isEmpty ? 0 : totalProfit / soldCars.length;
 
   double get averagePurchase =>
       cars.isEmpty ? 0 : totalPurchase / cars.length;
 
-  double get averageSalePrice => soldCars.isEmpty
-      ? 0
-      : totalRevenue / soldCars.length;
+  double get averageSalePrice =>
+      soldCars.isEmpty ? 0 : totalRevenue / soldCars.length;
 
   double get averageDaysToSell => soldCars.isEmpty
       ? 0
       : soldCars.map((c) => c.daysInStock).reduce((a, b) => a + b) /
           soldCars.length;
 
-  double get averageInvestment => cars.isEmpty
-      ? 0
-      : totalInvested / cars.length;
+  double get averageInvestment =>
+      cars.isEmpty ? 0 : totalInvested / cars.length;
 
   double get profitability => totalInvestedSold == 0
       ? 0
@@ -493,14 +674,6 @@ class Analytics {
       ));
     }
     return months;
-  }
-
-  Map<String, int> get statusCounts {
-    final map = <String, int>{};
-    for (final s in kStatuses) {
-      map[s] = cars.where((c) => c.status == s).length;
-    }
-    return map;
   }
 }
 class _KpiCard extends StatelessWidget {
@@ -566,7 +739,7 @@ class _KpiCard extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -580,7 +753,6 @@ class _KpiCard extends StatelessWidget {
 class _SectionTitle extends StatelessWidget {
   final String text;
   final IconData icon;
-
   const _SectionTitle({required this.text, required this.icon});
 
   @override
@@ -674,7 +846,7 @@ class _ExpensesTopCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (int i = 0; i < stats.length; i++) ...[
+            for (int i = 0; i < stats.length; i++)
               Builder(builder: (context) {
                 final s = stats[i];
                 final pct = totalExpenses == 0
@@ -717,7 +889,6 @@ class _ExpensesTopCard extends StatelessWidget {
                   ),
                 );
               }),
-            ],
           ],
         ),
       ),
@@ -727,7 +898,6 @@ class _ExpensesTopCard extends StatelessWidget {
 
 class _MonthlyChart extends StatelessWidget {
   final List<MonthStat> stats;
-
   const _MonthlyChart({required this.stats});
 
   @override
@@ -770,7 +940,8 @@ class _MonthlyChart extends StatelessWidget {
                           Container(
                             height: barHeight,
                             decoration: BoxDecoration(
-                              color: positive ? Colors.green : Colors.red,
+                              color:
+                                  positive ? Colors.green : Colors.red,
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
@@ -806,9 +977,7 @@ class _BestWorstCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (best == null && worst == null) {
-      return const SizedBox.shrink();
-    }
+    if (best == null && worst == null) return const SizedBox.shrink();
     return Row(
       children: [
         Expanded(
@@ -820,11 +989,8 @@ class _BestWorstCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(
-                        Icons.emoji_events,
-                        color: Colors.green,
-                        size: 18,
-                      ),
+                      const Icon(Icons.emoji_events,
+                          color: Colors.green, size: 18),
                       const SizedBox(width: 6),
                       Text(
                         'Лучшая',
@@ -869,11 +1035,8 @@ class _BestWorstCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(
-                        Icons.trending_down,
-                        color: Colors.red,
-                        size: 18,
-                      ),
+                      const Icon(Icons.trending_down,
+                          color: Colors.red, size: 18),
                       const SizedBox(width: 6),
                       Text(
                         'Худшая',
@@ -916,7 +1079,6 @@ class _BestWorstCard extends StatelessWidget {
 }
 class _AnalyticsSection extends StatefulWidget {
   final Analytics analytics;
-
   const _AnalyticsSection({required this.analytics});
 
   @override
@@ -938,7 +1100,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.55,
+          childAspectRatio: 1.5,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           children: [
@@ -981,8 +1143,8 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
             _KpiCard(
               title: 'Проданных',
-              value: '${a.soldCars.length}',
-              subtitle: 'за всё время',
+              value: '${a.soldThisMonthCount} в этом месяце',
+              subtitle: '${a.soldAllTimeCount} за всё время',
               icon: Icons.check_circle,
               color: Colors.green,
             ),
@@ -1028,7 +1190,8 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                       expanded
                           ? 'Свернуть подробную аналитику'
                           : 'Развернуть подробную аналитику',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style:
+                          const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -1078,11 +1241,17 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     valueColor: Colors.teal,
                   ),
                   _DetailRow(
-                    label: 'Чистая прибыль',
-                    value: money(a.totalProfit),
-                    valueColor: a.totalProfit >= 0
+                    label: 'Прибыль за этот месяц',
+                    value: money(a.profitThisMonth),
+                    valueColor: a.profitThisMonth >= 0
                         ? Colors.green
                         : Colors.red,
+                  ),
+                  _DetailRow(
+                    label: 'Прибыль за всё время',
+                    value: money(a.totalProfit),
+                    valueColor:
+                        a.totalProfit >= 0 ? Colors.green : Colors.red,
                   ),
                 ],
               ),
@@ -1108,8 +1277,9 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   _DetailRow(
                     label: 'Средняя прибыль',
                     value: money(a.averageProfit),
-                    valueColor:
-                        a.averageProfit >= 0 ? Colors.green : Colors.red,
+                    valueColor: a.averageProfit >= 0
+                        ? Colors.green
+                        : Colors.red,
                   ),
                   _DetailRow(
                     label: 'Средние вложения в машину',
@@ -1164,6 +1334,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String listMode = 'stock';
   String sortMode = 'purchaseDesc';
   bool showCheckReminder = false;
+  int trashCount = 0;
 
   @override
   void initState() {
@@ -1179,11 +1350,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _load() async {
     final data = await Storage.load();
+    final trash = await Storage.loadTrash();
     if (!mounted) return;
     setState(() {
       cars
         ..clear()
         ..addAll(data);
+      trashCount = trash.length;
       loading = false;
     });
     _checkReminder();
@@ -1209,9 +1382,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => showCheckReminder = false);
   }
 
-  Future<void> _persist() async {
-    await Storage.save(cars);
-  }
+  Future<void> _persist() async => Storage.save(cars);
 
   Analytics get analytics => Analytics(cars);
 
@@ -1285,27 +1456,41 @@ class _HomeScreenState extends State<HomeScreen> {
             _persist();
           },
           onDelete: () async {
-            for (final path in car.photos) {
-              try {
-                final f = File(path);
-                if (await f.exists()) await f.delete();
-              } catch (_) {}
-            }
-            for (final a in car.attachments) {
-              try {
-                final f = File(a.path);
-                if (await f.exists()) await f.delete();
-              } catch (_) {}
-            }
+            final trash = await Storage.loadTrash();
+            trash.add(
+              TrashEntry(car: car, deletedAt: todayIso()),
+            );
+            await Storage.saveTrash(trash);
             if (!mounted) return;
             setState(() {
               cars.removeWhere((c) => c.id == car.id);
+              trashCount = trash.length;
             });
+            _persist();
+          },
+          onDuplicate: (newCar) {
+            setState(() => cars.add(newCar));
             _persist();
           },
         ),
       ),
     );
+  }
+
+  void openTrash() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TrashScreen(
+          onRestore: (car) {
+            setState(() => cars.add(car));
+            _persist();
+            _load();
+          },
+        ),
+      ),
+    );
+    _load();
   }
 
   IconData _themeIcon(ThemeMode mode) {
@@ -1395,9 +1580,10 @@ class _HomeScreenState extends State<HomeScreen> {
               if (value == 'export') exportJson();
               if (value == 'csv') exportCsv(cars);
               if (value == 'import') importJson();
+              if (value == 'trash') openTrash();
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              const PopupMenuItem(
                 value: 'export',
                 child: ListTile(
                   leading: Icon(Icons.upload_file),
@@ -1405,7 +1591,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'csv',
                 child: ListTile(
                   leading: Icon(Icons.table_chart),
@@ -1413,11 +1599,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'import',
                 child: ListTile(
                   leading: Icon(Icons.download),
                   title: Text('Импорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'trash',
+                child: ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: Text('Корзина ($trashCount)'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -1440,7 +1634,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // Баннер "проверьте машины"
           if (showCheckReminder)
             SliverToBoxAdapter(
               child: Container(
@@ -1469,8 +1662,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
-          // Баннер "залежались"
           if (a.staleCars.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
@@ -1483,8 +1674,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber,
-                        color: Colors.red),
+                    const Icon(Icons.warning_amber, color: Colors.red),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -1497,8 +1687,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-
-          // Аналитика
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             sliver: SliverToBoxAdapter(
@@ -1515,8 +1703,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // Поиск
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             sliver: SliverToBoxAdapter(
@@ -1541,8 +1727,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // Переключатель склад/продано
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             sliver: SliverToBoxAdapter(
@@ -1569,23 +1753,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
-          // Заголовок + сортировка
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
                   Icon(
-                    listMode == 'stock' ? Icons.warehouse : Icons.inventory,
+                    listMode == 'stock'
+                        ? Icons.warehouse
+                        : Icons.inventory,
                     size: 18,
                   ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      listMode == 'stock'
-                          ? 'В наличии'
-                          : 'Проданные',
+                      listMode == 'stock' ? 'В наличии' : 'Проданные',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -1598,28 +1780,31 @@ class _HomeScreenState extends State<HomeScreen> {
                     onSelected: (v) => setState(() => sortMode = v),
                     itemBuilder: (_) => const [
                       PopupMenuItem(
-                          value: 'purchaseDesc',
-                          child: Text('По дате покупки ↓')),
+                        value: 'purchaseDesc',
+                        child: Text('По дате покупки ↓'),
+                      ),
                       PopupMenuItem(
-                          value: 'purchaseAsc',
-                          child: Text('По дате покупки ↑')),
+                        value: 'purchaseAsc',
+                        child: Text('По дате покупки ↑'),
+                      ),
                       PopupMenuItem(
-                          value: 'profitDesc',
-                          child: Text('По прибыли')),
+                        value: 'profitDesc',
+                        child: Text('По прибыли'),
+                      ),
                       PopupMenuItem(
-                          value: 'daysDesc',
-                          child: Text('По дням на складе')),
+                        value: 'daysDesc',
+                        child: Text('По дням на складе'),
+                      ),
                       PopupMenuItem(
-                          value: 'alpha',
-                          child: Text('По алфавиту')),
+                        value: 'alpha',
+                        child: Text('По алфавиту'),
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
           ),
-
-          // Список
           if (visible.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -1746,7 +1931,9 @@ class _CarListTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _PhotoThumb(path: photos.isNotEmpty ? photos.first : null),
+              _PhotoThumb(
+                path: photos.isNotEmpty ? photos.first : null,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1807,16 +1994,19 @@ class _CarListTile extends StatelessWidget {
                     else ...[
                       Text(
                         'Вложено: ${money(car.invested)}',
-                        style: const TextStyle(fontWeight: FontWeight.w500),
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.schedule, size: 14, color: daysColor),
+                          Icon(Icons.schedule,
+                              size: 14, color: daysColor),
                           const SizedBox(width: 4),
                           Text(
                             'На складе $days дн.',
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            style:
+                                theme.textTheme.bodySmall?.copyWith(
                               color: daysColor,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1838,7 +2028,6 @@ class _CarListTile extends StatelessWidget {
 
 class _PhotoThumb extends StatelessWidget {
   final String? path;
-
   const _PhotoThumb({required this.path});
 
   @override
@@ -1876,6 +2065,90 @@ class _PhotoThumb extends StatelessWidget {
     );
   }
 }
+class _AutocompleteField extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String label;
+  final Iterable<String> Function(String) optionsBuilder;
+  final VoidCallback? onChangedCallback;
+
+  const _AutocompleteField({
+    required this.controller,
+    required this.focusNode,
+    required this.label,
+    required this.optionsBuilder,
+    this.onChangedCallback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: RawAutocomplete<String>(
+        textEditingController: controller,
+        focusNode: focusNode,
+        optionsBuilder: (tv) {
+          final q = tv.text.trim();
+          if (q.isEmpty) return const Iterable<String>.empty();
+          return optionsBuilder(q);
+        },
+        onSelected: (value) {
+          controller.text = value;
+          onChangedCallback?.call();
+        },
+        fieldViewBuilder: (context, c, fn, onSubmitted) {
+          return TextField(
+            controller: c,
+            focusNode: fn,
+            onChanged: (_) => onChangedCallback?.call(),
+            decoration: InputDecoration(
+              labelText: label,
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.clear, size: 18),
+                onPressed: () {
+                  c.clear();
+                  onChangedCallback?.call();
+                },
+              ),
+            ),
+          );
+        },
+        optionsViewBuilder: (context, onSelected, options) {
+          return Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 4,
+              borderRadius: BorderRadius.circular(8),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: options.length,
+                  itemBuilder: (context, index) {
+                    final option = options.elementAt(index);
+                    return InkWell(
+                      onTap: () => onSelected(option),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
+                        child: Text(option),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class CarFormScreen extends StatefulWidget {
   final Car? car;
   final void Function(Car car) onSave;
@@ -1902,6 +2175,18 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final sellerPhone = TextEditingController();
   final sellerAddress = TextEditingController();
   final notes = TextEditingController();
+
+  final makeFocus = FocusNode();
+  final modelFocus = FocusNode();
+  final yearFocus = FocusNode();
+  final vinFocus = FocusNode();
+  final plateFocus = FocusNode();
+  final mileageFocus = FocusNode();
+  final purchaseFocus = FocusNode();
+  final sellerFocus = FocusNode();
+  final sellerPhoneFocus = FocusNode();
+  final sellerAddressFocus = FocusNode();
+  final notesFocus = FocusNode();
 
   String status = 'Куплен';
   DateTime? purchaseDate;
@@ -1944,6 +2229,17 @@ class _CarFormScreenState extends State<CarFormScreen> {
     sellerPhone.dispose();
     sellerAddress.dispose();
     notes.dispose();
+    makeFocus.dispose();
+    modelFocus.dispose();
+    yearFocus.dispose();
+    vinFocus.dispose();
+    plateFocus.dispose();
+    mileageFocus.dispose();
+    purchaseFocus.dispose();
+    sellerFocus.dispose();
+    sellerPhoneFocus.dispose();
+    sellerAddressFocus.dispose();
+    notesFocus.dispose();
     super.dispose();
   }
 
@@ -1955,14 +2251,11 @@ class _CarFormScreenState extends State<CarFormScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime(now.year + 2),
     );
-    if (picked != null) {
-      setState(() => purchaseDate = picked);
-    }
+    if (picked != null) setState(() => purchaseDate = picked);
   }
 
   void save() {
-    if (make.text.trim().isEmpty ||
-        model.text.trim().isEmpty) {
+    if (make.text.trim().isEmpty || model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Введите марку и модель')),
       );
@@ -1972,9 +2265,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
 
     if (isEdit) {
       final c = widget.car!;
-      if (c.status != status) {
-        c.statusChangedAt = todayIso();
-      }
+      if (c.status != status) c.statusChangedAt = todayIso();
       c.make = make.text.trim();
       c.model = model.text.trim();
       c.year = year.text.trim();
@@ -2018,6 +2309,30 @@ class _CarFormScreenState extends State<CarFormScreen> {
     Navigator.pop(context);
   }
 
+  Widget field(
+    TextEditingController controller,
+    FocusNode focusNode,
+    String label, {
+    bool number = false,
+    int lines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        maxLines: lines,
+        keyboardType: number
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2029,13 +2344,48 @@ class _CarFormScreenState extends State<CarFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          field(make, 'Марка'),
-          field(model, 'Модель'),
-          field(year, 'Год'),
-          field(vin, 'VIN'),
-          field(plate, 'Госномер'),
-          field(mileage, 'Пробег'),
-          field(purchase, 'Цена покупки', number: true),
+          _AutocompleteField(
+            controller: make,
+            focusNode: makeFocus,
+            label: 'Марка',
+            optionsBuilder: (q) {
+              final lower = q.toLowerCase();
+              return kCarCatalog.keys
+                  .where((m) => m.toLowerCase().contains(lower));
+            },
+            onChangedCallback: () => setState(() {}),
+          ),
+          _AutocompleteField(
+            controller: model,
+            focusNode: modelFocus,
+            label: 'Модель',
+            optionsBuilder: (q) {
+              final brand = make.text.trim();
+              final lower = q.toLowerCase();
+              if (brand.isEmpty) {
+                final all = kCarCatalog.values
+                    .expand((e) => e)
+                    .toSet()
+                    .toList();
+                return all.where((m) => m.toLowerCase().contains(lower));
+              }
+              final models = kCarCatalog[brand] ?? [];
+              return models.where(
+                (m) => m.toLowerCase().contains(lower),
+              );
+            },
+          ),
+          _AutocompleteField(
+            controller: year,
+            focusNode: yearFocus,
+            label: 'Год',
+            optionsBuilder: (q) =>
+                kYearList.where((y) => y.startsWith(q)),
+          ),
+          field(vin, vinFocus, 'VIN'),
+          field(plate, plateFocus, 'Госномер'),
+          field(mileage, mileageFocus, 'Пробег'),
+          field(purchase, purchaseFocus, 'Цена покупки', number: true),
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: InkWell(
@@ -2054,10 +2404,11 @@ class _CarFormScreenState extends State<CarFormScreen> {
               ),
             ),
           ),
-          field(seller, 'Продавец (имя)'),
-          field(sellerPhone, 'Телефон продавца', number: true),
-          field(sellerAddress, 'Адрес / город'),
-          field(notes, 'Примечания', lines: 4),
+          field(seller, sellerFocus, 'Продавец (имя)'),
+          field(sellerPhone, sellerPhoneFocus, 'Телефон продавца',
+              number: true),
+          field(sellerAddress, sellerAddressFocus, 'Адрес / город'),
+          field(notes, notesFocus, 'Примечания', lines: 4),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: status,
@@ -2084,39 +2435,19 @@ class _CarFormScreenState extends State<CarFormScreen> {
       ),
     );
   }
-
-  Widget field(
-    TextEditingController controller,
-    String label, {
-    bool number = false,
-    int lines = 1,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: controller,
-        maxLines: lines,
-        keyboardType: number
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
-  }
 }
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
+  final void Function(Car) onDuplicate;
 
   const CarDetailsScreen({
     super.key,
     required this.car,
     required this.onChanged,
     required this.onDelete,
+    required this.onDuplicate,
   });
 
   @override
@@ -2145,9 +2476,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
         widget.car.sellerPhone.replaceAll(RegExp(r'[^\d+]'), '');
     if (phone.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    }
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
   Future<void> _openAddress() async {
@@ -2203,13 +2532,22 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
+  void duplicateCar() {
+    final copy = widget.car.duplicate();
+    widget.onDuplicate(copy);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Создана копия автомобиля')),
+    );
+    Navigator.pop(context);
+  }
+
   void confirmDeleteCar() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Удалить автомобиль?'),
         content: const Text(
-          'Автомобиль, его расходы, фотографии и документы будут удалены. Действие нельзя отменить.',
+          'Автомобиль переместится в корзину. Восстановить можно в течение 30 дней.',
         ),
         actions: [
           TextButton(
@@ -2223,10 +2561,17 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
               widget.onDelete();
               Navigator.pop(context);
             },
-            child: const Text('Удалить'),
+            child: const Text('В корзину'),
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> generateContract() async {
+    await showDialog(
+      context: context,
+      builder: (_) => _ContractDialog(car: widget.car),
     );
   }
 
@@ -2238,25 +2583,54 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       appBar: AppBar(
         title: Text('${car.make} ${car.model}'),
         actions: [
-          IconButton(
-            tooltip: 'Редактировать',
-            onPressed: editCar,
-            icon: const Icon(Icons.edit),
-          ),
-          IconButton(
-            tooltip: 'Удалить',
-            onPressed: confirmDeleteCar,
-            icon: const Icon(Icons.delete_outline),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'edit') editCar();
+              if (value == 'duplicate') duplicateCar();
+              if (value == 'contract') generateContract();
+              if (value == 'delete') confirmDeleteCar();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'edit',
+                child: ListTile(
+                  leading: Icon(Icons.edit),
+                  title: Text('Редактировать'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'duplicate',
+                child: ListTile(
+                  leading: Icon(Icons.copy),
+                  title: Text('Дублировать'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'contract',
+                child: ListTile(
+                  leading: Icon(Icons.description),
+                  title: Text('Сформировать ДКП'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete',
+                child: ListTile(
+                  leading: Icon(Icons.delete_outline),
+                  title: Text('В корзину'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _PhotosBlock(
-            car: car,
-            onChanged: widget.onChanged,
-          ),
+          _PhotosBlock(car: car, onChanged: widget.onChanged),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -2390,8 +2764,9 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: salePrice,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: const InputDecoration(
                       labelText: 'Цена продажи',
                       border: OutlineInputBorder(),
@@ -2458,24 +2833,18 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
-  Widget financeRow(
-    String title,
-    double value, {
-    bool bold = false,
-  }) {
+  Widget financeRow(String title, double value, {bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            title,
-            style: TextStyle(fontWeight: bold ? FontWeight.bold : null),
-          ),
-          Text(
-            money(value),
-            style: TextStyle(fontWeight: bold ? FontWeight.bold : null),
-          ),
+          Text(title,
+              style: TextStyle(
+                  fontWeight: bold ? FontWeight.bold : null)),
+          Text(money(value),
+              style: TextStyle(
+                  fontWeight: bold ? FontWeight.bold : null)),
         ],
       ),
     );
@@ -2573,7 +2942,8 @@ class _PhotosBlock extends StatelessWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: car.photos.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final file = File(car.photos[index]);
                     return Stack(
@@ -2587,8 +2957,8 @@ class _PhotosBlock extends StatelessWidget {
                                 ? Image.file(file, fit: BoxFit.cover)
                                 : Container(
                                     color: Colors.black12,
-                                    child:
-                                        const Icon(Icons.broken_image),
+                                    child: const Icon(
+                                        Icons.broken_image),
                                   ),
                           ),
                         ),
@@ -2662,8 +3032,14 @@ class _DocumentsBlock extends StatelessWidget {
       final ext = p.extension(name).toLowerCase();
       if (ext == '.pdf') {
         type = 'pdf';
-      } else if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic']
-          .contains(ext)) {
+      } else if ([
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.gif',
+        '.webp',
+        '.heic'
+      ].contains(ext)) {
         type = 'image';
       } else {
         type = 'other';
@@ -2707,9 +3083,7 @@ class _DocumentsBlock extends StatelessWidget {
         context: context,
         builder: (_) => Dialog(
           backgroundColor: Colors.transparent,
-          child: InteractiveViewer(
-            child: Image.file(file),
-          ),
+          child: InteractiveViewer(child: Image.file(file)),
         ),
       );
     } else {
@@ -2934,7 +3308,8 @@ Future<void> showExpenseDialog({
                   const SizedBox(height: 10),
                   TextField(
                     controller: amount,
-                    keyboardType: const TextInputType.numberWithOptions(
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
@@ -2995,7 +3370,8 @@ Future<void> showExpenseDialog({
                   onChanged();
                   Navigator.pop(dialogContext);
                 },
-                child: Text(expense == null ? 'Добавить' : 'Сохранить'),
+                child:
+                    Text(expense == null ? 'Добавить' : 'Сохранить'),
               ),
             ],
           );
@@ -3004,6 +3380,546 @@ Future<void> showExpenseDialog({
     },
   );
 }
+class TrashScreen extends StatefulWidget {
+  final void Function(Car) onRestore;
+
+  const TrashScreen({super.key, required this.onRestore});
+
+  @override
+  State<TrashScreen> createState() => _TrashScreenState();
+}
+
+class _TrashScreenState extends State<TrashScreen> {
+  List<TrashEntry> trash = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final data = await Storage.loadTrash();
+    if (!mounted) return;
+    setState(() {
+      trash = data;
+      loading = false;
+    });
+  }
+
+  Future<void> _restore(TrashEntry t) async {
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    widget.onRestore(t.car);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Автомобиль восстановлен')),
+    );
+  }
+
+  Future<void> _deleteForever(TrashEntry t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить навсегда?'),
+        content: const Text(
+          'Автомобиль и все связанные файлы будут удалены без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final path in t.car.photos) {
+      try {
+        final f = File(path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    for (final a in t.car.attachments) {
+      try {
+        final f = File(a.path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Корзина (${trash.length})'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : trash.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text(
+                      'Корзина пуста',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: trash.length,
+                  itemBuilder: (context, index) {
+                    final t = trash[index];
+                    final car = t.car;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${car.make} ${car.model}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Удалён: ${t.deletedAt}'
+                              ' • осталось ${t.daysLeft} дн.',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _restore(t),
+                                    icon: const Icon(Icons.restore),
+                                    label: const Text('Восстановить'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () => _deleteForever(t),
+                                  icon: const Icon(
+                                    Icons.delete_forever,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+class _ContractDialog extends StatefulWidget {
+  final Car car;
+  const _ContractDialog({required this.car});
+
+  @override
+  State<_ContractDialog> createState() => _ContractDialogState();
+}
+
+class _ContractDialogState extends State<_ContractDialog> {
+  final sellerFio = TextEditingController();
+  final sellerPassport = TextEditingController();
+  final sellerAddress = TextEditingController();
+  final sellerPhone = TextEditingController();
+  final buyerFio = TextEditingController();
+  final buyerPassport = TextEditingController();
+  final buyerAddress = TextEditingController();
+  final buyerPhone = TextEditingController();
+  final priceController = TextEditingController();
+  final sellerIsMe = ValueNotifier<bool>(true);
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    priceController.text = widget.car.sale > 0
+        ? widget.car.sale.toStringAsFixed(0)
+        : widget.car.invested.toStringAsFixed(0);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final seller = await Storage.loadSellerData();
+    final buyer = await Storage.loadBuyerData();
+    sellerFio.text = seller['fio'] ?? '';
+    sellerPassport.text = seller['passport'] ?? '';
+    sellerAddress.text = seller['address'] ?? '';
+    sellerPhone.text = seller['phone'] ?? '';
+    buyerFio.text = buyer['fio'] ?? '';
+    buyerPassport.text = buyer['passport'] ?? '';
+    buyerAddress.text = buyer['address'] ?? '';
+    buyerPhone.text = buyer['phone'] ?? '';
+    if (!mounted) return;
+    setState(() => _loaded = true);
+  }
+
+  @override
+  void dispose() {
+    sellerFio.dispose();
+    sellerPassport.dispose();
+    sellerAddress.dispose();
+    sellerPhone.dispose();
+    buyerFio.dispose();
+    buyerPassport.dispose();
+    buyerAddress.dispose();
+    buyerPhone.dispose();
+    priceController.dispose();
+    sellerIsMe.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final sellerData = {
+      'fio': sellerFio.text.trim(),
+      'passport': sellerPassport.text.trim(),
+      'address': sellerAddress.text.trim(),
+      'phone': sellerPhone.text.trim(),
+    };
+    final buyerData = {
+      'fio': buyerFio.text.trim(),
+      'passport': buyerPassport.text.trim(),
+      'address': buyerAddress.text.trim(),
+      'phone': buyerPhone.text.trim(),
+    };
+    await Storage.saveSellerData(sellerData);
+    await Storage.saveBuyerData(buyerData);
+    await saveContractHtml(widget.car, sellerData, buyerData,
+        priceController.text.trim());
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Договор сформирован')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Договор купли-продажи',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Авто: ${widget.car.make} ${widget.car.model}'),
+            const SizedBox(height: 12),
+            const Divider(),
+            const Text(
+              'Продавец',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            _dlgField(sellerFio, 'ФИО'),
+            _dlgField(sellerPassport, 'Паспорт (серия номер)'),
+            _dlgField(sellerAddress, 'Адрес регистрации'),
+            _dlgField(sellerPhone, 'Телефон'),
+            const SizedBox(height: 12),
+            const Divider(),
+            const Text(
+              'Покупатель',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            _dlgField(buyerFio, 'ФИО'),
+            _dlgField(buyerPassport, 'Паспорт (серия номер)'),
+            _dlgField(buyerAddress, 'Адрес регистрации'),
+            _dlgField(buyerPhone, 'Телефон'),
+            const SizedBox(height: 12),
+            const Divider(),
+            _dlgField(priceController, 'Цена продажи (₽)',
+                number: true),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _generate,
+                    icon: const Icon(Icons.description),
+                    label: const Text('Сформировать'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dlgField(
+    TextEditingController c,
+    String label, {
+    bool number = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: c,
+        keyboardType: number
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> saveContractHtml(
+  Car car,
+  Map<String, String> seller,
+  Map<String, String> buyer,
+  String price,
+) async {
+  final now = DateTime.now();
+  final day = now.day.toString().padLeft(2, '0');
+  final month = DateFormat('MMMM', 'ru').format(now);
+  final year = now.year;
+  final priceNum = double.tryParse(price.replaceAll(',', '.')) ?? 0;
+  final priceRub = NumberFormat('#,##0').format(priceNum).replaceAll(',', ' ');
+  final priceWords = _numToRussianWords(priceNum.round());
+
+  String row(String label, String value) =>
+      '<tr><td class="lbl">$label</td><td>$value</td></tr>';
+
+  final html = '''
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<title>ДКП ${car.make} ${car.model}</title>
+<style>
+  body{font-family:Georgia,serif;margin:30px;line-height:1.5;color:#000;}
+  h1{text-align:center;font-size:18px;margin-bottom:4px;}
+  .sub{text-align:center;font-size:14px;margin-bottom:20px;}
+  .place{text-align:right;font-size:13px;margin-bottom:18px;}
+  p{text-align:justify;font-size:14px;margin:6px 0;}
+  table{width:100%;border-collapse:collapse;margin:8px 0 16px;}
+  .lbl{width:35%;padding:4px 8px;vertical-align:top;font-weight:bold;}
+  td{padding:4px 8px;vertical-align:top;border-bottom:1px solid #ddd;font-size:14px;}
+  h3{font-size:15px;margin-top:20px;margin-bottom:6px;}
+  .sign{display:flex;justify-content:space-between;margin-top:30px;font-size:14px;}
+  .sign div{width:45%;}
+  .line{border-bottom:1px solid #000;height:20px;margin-bottom:4px;}
+  @media print{body{margin:15mm;}}
+</style></head><body>
+<h1>ДОГОВОР КУПЛИ-ПРОДАЖИ АВТОМОБИЛЯ</h1>
+<div class="sub">№ ${car.id} от $day $month $year</div>
+<div class="place">г. __________, $day $month $year</div>
+
+<p>Гражданин(ка) <b>${seller['fio'] ?? ''}</b>, паспорт ${seller['passport'] ?? ''},
+зарегистрированный(ая) по адресу: ${seller['address'] ?? ''},
+телефон: ${seller['phone'] ?? ''} — именуемый(ая) в дальнейшем «Продавец»,
+с одной стороны, и</p>
+
+<p>Гражданин(ка) <b>${buyer['fio'] ?? ''}</b>, паспорт ${buyer['passport'] ?? ''},
+зарегистрированный(ая) по адресу: ${buyer['address'] ?? ''},
+телефон: ${buyer['phone'] ?? ''} — именуемый(ая) в дальнейшем «Покупатель»,
+с другой стороны, заключили настоящий договор о нижеследующем.</p>
+
+<h3>1. Предмет договора</h3>
+<p>Продавец передаёт, а Покупатель принимает в собственность транспортное средство:</p>
+<table>
+${row('Марка, модель', '${car.make} ${car.model}')}
+${row('Год выпуска', car.year)}
+${row('VIN', car.vin)}
+${row('Государственный номер', car.plate)}
+${row('Пробег', car.mileage.isEmpty ? '—' : '${car.mileage} км')}
+${row('Техническое состояние', 'удовлетворительное')}
+</table>
+
+<h3>2. Цена и порядок расчётов</h3>
+<p>Стоимость транспортного средства составляет <b>$priceRub ₽</b>
+($priceWords).</p>
+<p>Денежные средства переданы Продавцу в полном объёме до подписания
+настоящего договора.</p>
+
+<h3>3. Передача автомобиля</h3>
+<p>Продавец передаёт Покупателю автомобиль, ключи, ПТС, СТС и иные
+документы, необходимые для регистрации в ГИБДД. Покупатель обязуется
+в течение 10 дней со дня подписания договора обратиться в органы
+ГИБДД для перерегистрации транспортного средства.</p>
+
+<h3>4. Прочие условия</h3>
+<p>Договор составлен в трёх экземплярах: по одному для Продавца и
+Покупателя, третий — для органов ГИБДД. Все экземпляры имеют одинаковую
+юридическую силу.</p>
+
+<div class="sign">
+  <div>
+    <b>Продавец</b>
+    <div class="line"></div>
+    <div style="font-size:12px;">${seller['fio'] ?? ''}</div>
+  </div>
+  <div>
+    <b>Покупатель</b>
+    <div class="line"></div>
+    <div style="font-size:12px;">${buyer['fio'] ?? ''}</div>
+  </div>
+</div>
+</body></html>
+''';
+
+  final dir = await getApplicationDocumentsDirectory();
+  final contractsDir = Directory(p.join(dir.path, 'contracts'));
+  if (!await contractsDir.exists()) {
+    await contractsDir.create(recursive: true);
+  }
+  final fileName =
+      'ДКП_${car.make}_${car.model}_${DateTime.now().millisecondsSinceEpoch}.html';
+  final file = File(p.join(contractsDir.path, fileName));
+  await file.writeAsString(html);
+  await OpenFilex.open(file.path);
+}
+String _numToRussianWords(int n) {
+  if (n == 0) return 'ноль рублей 00 копеек';
+  final units = [
+    '', 'один', 'два', 'три', 'четыре', 'пять',
+    'шесть', 'семь', 'восемь', 'девять', 'десять',
+    'одиннадцать', 'двенадцать', 'тринадцать',
+    'четырнадцать', 'пятнадцать', 'шестнадцать',
+    'семнадцать', 'восемнадцать', 'девятнадцать'
+  ];
+  final tens = [
+    '', '', 'двадцать', 'тридцать', 'сорок',
+    'пятьдесят', 'шестьдесят', 'семьдесят',
+    'восемьдесят', 'девяносто'
+  ];
+  final hundreds = [
+    '', 'сто', 'двести', 'триста', 'четыреста',
+    'пятьсот', 'шестьсот', 'семьсот', 'восемьсот',
+    'девятьсот'
+  ];
+  final female = [
+    '', 'одна', 'две', 'три', 'четыре', 'пять',
+    'шесть', 'семь', 'восемь', 'девять', 'десять',
+    'одиннадцать', 'двенадцать', 'тринадцать',
+    'четырнадцать', 'пятнадцать', 'шестнадцать',
+    'семнадцать', 'восемнадцать', 'девятнадцать'
+  ];
+
+  String under1000(int num, {bool feminine = false}) {
+    final parts = <String>[];
+    parts.add(hundreds[num ~/ 100]);
+    final rest = num % 100;
+    if (rest < 20) {
+      parts.add(feminine ? female[rest] : units[rest]);
+    } else {
+      parts.add(tens[rest ~/ 10]);
+      parts.add(feminine ? female[rest % 10] : units[rest % 10]);
+    }
+    return parts.where((x) => x.isNotEmpty).join(' ');
+  }
+
+  final parts = <String>[];
+  final millions = n ~/ 1000000;
+  final thousands = (n % 1000000) ~/ 1000;
+  final rest = n % 1000;
+
+  if (millions > 0) {
+    parts.add(under1000(millions));
+    final last = millions % 10;
+    final lastTwo = millions % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('миллионов');
+    } else if (last == 1) {
+      parts.add('миллион');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('миллиона');
+    } else {
+      parts.add('миллионов');
+    }
+  }
+  if (thousands > 0) {
+    parts.add(under1000(thousands, feminine: true));
+    final last = thousands % 10;
+    final lastTwo = thousands % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('тысяч');
+    } else if (last == 1) {
+      parts.add('тысяча');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('тысячи');
+    } else {
+      parts.add('тысяч');
+    }
+  }
+  if (rest > 0) {
+    parts.add(under1000(rest));
+    final last = rest % 10;
+    final lastTwo = rest % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('рублей');
+    } else if (last == 1) {
+      parts.add('рубль');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('рубля');
+    } else {
+      parts.add('рублей');
+    }
+  } else {
+    parts.add('рублей');
+  }
+  parts.add('00 копеек');
+  final joined = parts.where((x) => x.isNotEmpty).join(' ');
+  return joined[0].toUpperCase() + joined.substring(1);
+}
+
 Future<void> exportCsv(List<Car> cars) async {
   final buf = StringBuffer();
   buf.writeln(
