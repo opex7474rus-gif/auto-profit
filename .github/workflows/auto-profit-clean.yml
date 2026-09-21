@@ -29,6 +29,21 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Ensure launcher icon
+        run: |
+          mkdir -p assets
+          if [ ! -f assets/icon.png ]; then
+            echo "assets/icon.png не найден — генерирую стандартную иконку"
+            convert -size 1024x1024 xc:'#1565C0' \
+              -gravity center -fill white -pointsize 400 \
+              -annotate 0 'AP' assets/icon.png
+          else
+            echo "Использую свою иконку assets/icon.png"
+          fi
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
       - name: Build APK
         run: flutter build apk --release
 
@@ -41,5 +56,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: auto-profit-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
