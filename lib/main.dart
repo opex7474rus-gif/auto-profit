@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const AutoProfitApp());
 }
 
@@ -24,6 +27,7 @@ class AutoProfitApp extends StatelessWidget {
 }
 
 class Car {
+  String id;
   String make;
   String model;
   String year;
@@ -38,6 +42,7 @@ class Car {
   List<Expense> expenses;
 
   Car({
+    required this.id,
     required this.make,
     required this.model,
     required this.year,
@@ -52,23 +57,50 @@ class Car {
     required this.expenses,
   });
 
+  factory Car.fromJson(Map<String, dynamic> json) {
+    return Car(
+      id: (json['id'] ?? '') as String,
+      make: (json['make'] ?? '') as String,
+      model: (json['model'] ?? '') as String,
+      year: (json['year'] ?? '') as String,
+      vin: (json['vin'] ?? '') as String,
+      plate: (json['plate'] ?? '') as String,
+      mileage: (json['mileage'] ?? '') as String,
+      purchasePrice: (json['purchasePrice'] ?? '') as String,
+      status: (json['status'] ?? 'Куплен') as String,
+      seller: (json['seller'] ?? '') as String,
+      notes: (json['notes'] ?? '') as String,
+      salePrice: (json['salePrice'] ?? '') as String,
+      expenses: ((json['expenses'] ?? []) as List)
+          .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'make': make,
+        'model': model,
+        'year': year,
+        'vin': vin,
+        'plate': plate,
+        'mileage': mileage,
+        'purchasePrice': purchasePrice,
+        'status': status,
+        'seller': seller,
+        'notes': notes,
+        'salePrice': salePrice,
+        'expenses': expenses.map((e) => e.toJson()).toList(),
+      };
+
   double get purchase =>
-      double.tryParse(
-        purchasePrice.replaceAll(',', '.'),
-      ) ??
-      0;
+      double.tryParse(purchasePrice.replaceAll(',', '.')) ?? 0;
 
   double get sale =>
-      double.tryParse(
-        salePrice.replaceAll(',', '.'),
-      ) ??
-      0;
+      double.tryParse(salePrice.replaceAll(',', '.')) ?? 0;
 
   double get expensesTotal =>
-      expenses.fold(
-        0,
-        (sum, item) => sum + item.amount,
-      );
+      expenses.fold(0, (sum, item) => sum + item.amount);
 
   double get invested => purchase + expensesTotal;
 
@@ -76,45 +108,103 @@ class Car {
 }
 
 class Expense {
+  String id;
   String category;
   double amount;
   String note;
 
   Expense({
+    required this.id,
     required this.category,
     required this.amount,
     required this.note,
   });
+
+  factory Expense.fromJson(Map<String, dynamic> json) {
+    return Expense(
+      id: (json['id'] ?? '') as String,
+      category: (json['category'] ?? '') as String,
+      amount: ((json['amount'] ?? 0) as num).toDouble(),
+      note: (json['note'] ?? '') as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'category': category,
+        'amount': amount,
+        'note': note,
+      };
 }
 
+class Storage {
+  static const _key = 'cars_v1';
+
+  static Future<List<Car>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => Car.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> save(List<Car> cars) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key,
+      jsonEncode(cars.map((c) => c.toJson()).toList()),
+    );
+  }
+}
+
+String newId() =>
+    DateTime.now().microsecondsSinceEpoch.toString();
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   final List<Car> cars = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final data = await Storage.load();
+    if (!mounted) return;
+    setState(() {
+      cars
+        ..clear()
+        ..addAll(data);
+      loading = false;
+    });
+  }
+
+  Future<void> _persist() async {
+    await Storage.save(cars);
+  }
 
   double get totalInvested =>
-      cars.fold(
-        0,
-        (sum, car) => sum + car.invested,
-      );
+      cars.fold(0, (sum, car) => sum + car.invested);
 
   double get totalProfit =>
-      cars.fold(
-        0,
-        (sum, car) => sum + car.profit,
-      );
+      cars.fold(0, (sum, car) => sum + car.profit);
 
-  int countStatus(String status) {
-    return cars
-        .where((car) => car.status == status)
-        .length;
-  }
+  int countStatus(String status) =>
+      cars.where((car) => car.status == status).length;
 
   void addCar() {
     Navigator.push(
@@ -122,9 +212,8 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (_) => CarFormScreen(
           onSave: (car) {
-            setState(() {
-              cars.add(car);
-            });
+            setState(() => cars.add(car));
+            _persist();
           },
         ),
       ),
@@ -138,7 +227,16 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => CarDetailsScreen(
           car: car,
           onChanged: () {
+            if (!mounted) return;
             setState(() {});
+            _persist();
+          },
+          onDelete: () {
+            if (!mounted) return;
+            setState(() {
+              cars.removeWhere((c) => c.id == car.id);
+            });
+            _persist();
           },
         ),
       ),
@@ -147,6 +245,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Авто Профит'),
@@ -181,8 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: StatCard(
                   title: 'На продаже',
-                  value:
-                      '${countStatus('На продаже')}',
+                  value: '${countStatus('На продаже')}',
                   icon: Icons.sell,
                 ),
               ),
@@ -195,8 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: StatCard(
                   title: 'Вложено',
                   value: money(totalInvested),
-                  icon:
-                      Icons.account_balance_wallet,
+                  icon: Icons.account_balance_wallet,
                 ),
               ),
               const SizedBox(width: 10),
@@ -214,8 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Статусы',
@@ -225,28 +326,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  statusRow(
-                    'Куплен',
-                    countStatus('Куплен'),
-                  ),
-                  statusRow(
-                    'В ремонте',
-                    countStatus('В ремонте'),
-                  ),
-                  statusRow(
-                    'Готов к продаже',
-                    countStatus(
-                      'Готов к продаже',
-                    ),
-                  ),
-                  statusRow(
-                    'На продаже',
-                    countStatus('На продаже'),
-                  ),
-                  statusRow(
-                    'Продан',
-                    countStatus('Продан'),
-                  ),
+                  statusRow('Куплен', countStatus('Куплен')),
+                  statusRow('В ремонте', countStatus('В ремонте')),
+                  statusRow('Готов к продаже',
+                      countStatus('Готов к продаже')),
+                  statusRow('На продаже', countStatus('На продаже')),
+                  statusRow('Продан', countStatus('Продан')),
                 ],
               ),
             ),
@@ -267,15 +352,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       'Автомобилей пока нет',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     SizedBox(height: 8),
                     Text(
                       'Нажмите «Добавить авто», чтобы создать первую карточку.',
-                      textAlign:
-                          TextAlign.center,
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
@@ -285,23 +368,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ...cars.map(
               (car) => Card(
                 child: ListTile(
-                  leading:
-                      const CircleAvatar(
-                    child: Icon(
-                      Icons.directions_car,
-                    ),
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.directions_car),
                   ),
-                  title: Text(
-                    '${car.make} ${car.model}',
-                  ),
+                  title: Text('${car.make} ${car.model}'),
                   subtitle: Text(
                     '${car.year} • ${car.status}\n'
                     'Вложено: ${money(car.invested)}',
                   ),
                   isThreeLine: true,
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                  ),
+                  trailing: const Icon(Icons.chevron_right),
                   onTap: () => openCar(car),
                 ),
               ),
@@ -312,23 +388,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget statusRow(
-    String title,
-    int count,
-  ) {
+  Widget statusRow(String title, int count) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(title),
           Text(
             '$count',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -354,8 +423,7 @@ class StatCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon),
             const SizedBox(height: 8),
@@ -374,22 +442,21 @@ class StatCard extends StatelessWidget {
     );
   }
 }
-
 class CarFormScreen extends StatefulWidget {
+  final Car? car;
   final void Function(Car car) onSave;
 
   const CarFormScreen({
     super.key,
+    this.car,
     required this.onSave,
   });
 
   @override
-  State<CarFormScreen> createState() =>
-      _CarFormScreenState();
+  State<CarFormScreen> createState() => _CarFormScreenState();
 }
 
-class _CarFormScreenState
-    extends State<CarFormScreen> {
+class _CarFormScreenState extends State<CarFormScreen> {
   final make = TextEditingController();
   final model = TextEditingController();
   final year = TextEditingController();
@@ -401,6 +468,26 @@ class _CarFormScreenState
   final notes = TextEditingController();
 
   String status = 'Куплен';
+
+  bool get isEdit => widget.car != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final c = widget.car;
+    if (c != null) {
+      make.text = c.make;
+      model.text = c.model;
+      year.text = c.year;
+      vin.text = c.vin;
+      plate.text = c.plate;
+      mileage.text = c.mileage;
+      purchase.text = c.purchasePrice;
+      seller.text = c.seller;
+      notes.text = c.notes;
+      status = c.status;
+    }
+  }
 
   @override
   void dispose() {
@@ -421,30 +508,44 @@ class _CarFormScreenState
         model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Введите марку и модель',
-          ),
+          content: Text('Введите марку и модель'),
         ),
       );
       return;
     }
 
-    widget.onSave(
-      Car(
-        make: make.text.trim(),
-        model: model.text.trim(),
-        year: year.text.trim(),
-        vin: vin.text.trim(),
-        plate: plate.text.trim(),
-        mileage: mileage.text.trim(),
-        purchasePrice: purchase.text.trim(),
-        status: status,
-        seller: seller.text.trim(),
-        notes: notes.text.trim(),
-        salePrice: '',
-        expenses: [],
-      ),
-    );
+    if (isEdit) {
+      final c = widget.car!;
+      c.make = make.text.trim();
+      c.model = model.text.trim();
+      c.year = year.text.trim();
+      c.vin = vin.text.trim();
+      c.plate = plate.text.trim();
+      c.mileage = mileage.text.trim();
+      c.purchasePrice = purchase.text.trim();
+      c.status = status;
+      c.seller = seller.text.trim();
+      c.notes = notes.text.trim();
+      widget.onSave(c);
+    } else {
+      widget.onSave(
+        Car(
+          id: newId(),
+          make: make.text.trim(),
+          model: model.text.trim(),
+          year: year.text.trim(),
+          vin: vin.text.trim(),
+          plate: plate.text.trim(),
+          mileage: mileage.text.trim(),
+          purchasePrice: purchase.text.trim(),
+          status: status,
+          seller: seller.text.trim(),
+          notes: notes.text.trim(),
+          salePrice: '',
+          expenses: [],
+        ),
+      );
+    }
 
     Navigator.pop(context);
   }
@@ -453,8 +554,8 @@ class _CarFormScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Новый автомобиль',
+        title: Text(
+          isEdit ? 'Редактировать авто' : 'Новый автомобиль',
         ),
       ),
       body: ListView(
@@ -466,17 +567,9 @@ class _CarFormScreenState
           field(vin, 'VIN'),
           field(plate, 'Госномер'),
           field(mileage, 'Пробег'),
-          field(
-            purchase,
-            'Цена покупки',
-            number: true,
-          ),
+          field(purchase, 'Цена покупки', number: true),
           field(seller, 'Продавец'),
-          field(
-            notes,
-            'Примечания',
-            lines: 4,
-          ),
+          field(notes, 'Примечания', lines: 4),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: status,
@@ -495,9 +588,7 @@ class _CarFormScreenState
               ),
               DropdownMenuItem(
                 value: 'Готов к продаже',
-                child: Text(
-                  'Готов к продаже',
-                ),
+                child: Text('Готов к продаже'),
               ),
               DropdownMenuItem(
                 value: 'На продаже',
@@ -510,9 +601,7 @@ class _CarFormScreenState
             ],
             onChanged: (value) {
               if (value != null) {
-                setState(() {
-                  status = value;
-                });
+                setState(() => status = value);
               }
             },
           ),
@@ -520,8 +609,10 @@ class _CarFormScreenState
           FilledButton.icon(
             onPressed: save,
             icon: const Icon(Icons.save),
-            label: const Text(
-              'Сохранить автомобиль',
+            label: Text(
+              isEdit
+                  ? 'Сохранить изменения'
+                  : 'Сохранить автомобиль',
             ),
           ),
         ],
@@ -536,16 +627,12 @@ class _CarFormScreenState
     int lines = 1,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 10,
-      ),
+      padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
         maxLines: lines,
         keyboardType: number
-            ? const TextInputType.numberWithOptions(
-                decimal: true,
-              )
+            ? const TextInputType.numberWithOptions(decimal: true)
             : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
@@ -558,20 +645,20 @@ class _CarFormScreenState
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
+  final VoidCallback onDelete;
 
   const CarDetailsScreen({
     super.key,
     required this.car,
     required this.onChanged,
+    required this.onDelete,
   });
 
   @override
-  State<CarDetailsScreen> createState() =>
-      _CarDetailsScreenState();
+  State<CarDetailsScreen> createState() => _CarDetailsScreenState();
 }
 
-class _CarDetailsScreenState
-    extends State<CarDetailsScreen> {
+class _CarDetailsScreenState extends State<CarDetailsScreen> {
   final salePrice = TextEditingController();
 
   @override
@@ -588,35 +675,79 @@ class _CarDetailsScreenState
 
   void saveSalePrice() {
     setState(() {
-      widget.car.salePrice =
-          salePrice.text.trim();
+      widget.car.salePrice = salePrice.text.trim();
     });
-
     widget.onChanged();
-
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Цена продажи сохранена',
+      const SnackBar(content: Text('Цена продажи сохранена')),
+    );
+  }
+
+  void editCar() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CarFormScreen(
+          car: widget.car,
+          onSave: (_) {
+            setState(() {});
+            widget.onChanged();
+          },
         ),
       ),
     );
   }
 
-  void addExpense() {
-    final category =
-        TextEditingController();
-    final amount =
-        TextEditingController();
-    final note =
-        TextEditingController();
+  void confirmDeleteCar() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить автомобиль?'),
+        content: const Text(
+          'Автомобиль и все его расходы будут удалены. Действие нельзя отменить.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              widget.onDelete();
+              Navigator.pop(context);
+            },
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void showExpenseDialog({Expense? expense}) {
+    final category = TextEditingController(
+      text: expense?.category ?? '',
+    );
+    final amount = TextEditingController(
+      text: expense != null
+          ? expense.amount.toStringAsFixed(0)
+          : '',
+    );
+    final note = TextEditingController(
+      text: expense?.note ?? '',
+    );
 
     showDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Добавить расход',
+          title: Text(
+            expense == null
+                ? 'Добавить расход'
+                : 'Изменить расход',
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -624,88 +755,85 @@ class _CarDetailsScreenState
               children: [
                 TextField(
                   controller: category,
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Категория',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: amount,
                   keyboardType:
-                      const TextInputType
-                          .numberWithOptions(
+                      const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Сумма',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: note,
                   maxLines: 3,
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Комментарий',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
               ],
             ),
           ),
           actions: [
+            if (expense != null)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    widget.car.expenses.removeWhere(
+                      (e) => e.id == expense.id,
+                    );
+                  });
+                  widget.onChanged();
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text(
+                  'Удалить',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                );
-              },
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Отмена'),
             ),
             FilledButton(
               onPressed: () {
-                final value =
-                    double.tryParse(
-                          amount.text
-                              .replaceAll(
-                            ',',
-                            '.',
-                          ),
-                        ) ??
-                        0;
-
-                if (category.text
-                        .trim()
-                        .isEmpty ||
-                    value <= 0) {
+                final value = double.tryParse(
+                      amount.text.replaceAll(',', '.'),
+                    ) ??
+                    0;
+                if (category.text.trim().isEmpty || value <= 0) {
                   return;
                 }
-
                 setState(() {
-                  widget.car.expenses.add(
-                    Expense(
-                      category:
-                          category.text.trim(),
-                      amount: value,
-                      note: note.text.trim(),
-                    ),
-                  );
+                  if (expense == null) {
+                    widget.car.expenses.add(
+                      Expense(
+                        id: newId(),
+                        category: category.text.trim(),
+                        amount: value,
+                        note: note.text.trim(),
+                      ),
+                    );
+                  } else {
+                    expense.category = category.text.trim();
+                    expense.amount = value;
+                    expense.note = note.text.trim();
+                  }
                 });
-
                 widget.onChanged();
-
-                Navigator.pop(
-                  dialogContext,
-                );
+                Navigator.pop(dialogContext);
               },
-              child: const Text('Добавить'),
+              child: Text(expense == null ? 'Добавить' : 'Сохранить'),
             ),
           ],
         );
@@ -719,9 +847,19 @@ class _CarDetailsScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '${car.make} ${car.model}',
-        ),
+        title: Text('${car.make} ${car.model}'),
+        actions: [
+          IconButton(
+            tooltip: 'Редактировать',
+            onPressed: editCar,
+            icon: const Icon(Icons.edit),
+          ),
+          IconButton(
+            tooltip: 'Удалить',
+            onPressed: confirmDeleteCar,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -730,32 +868,22 @@ class _CarDetailsScreenState
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     '${car.make} ${car.model}',
                     style: const TextStyle(
                       fontSize: 24,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text('Год: ${car.year}'),
                   Text('VIN: ${car.vin}'),
-                  Text(
-                    'Госномер: ${car.plate}',
-                  ),
-                  Text(
-                    'Пробег: ${car.mileage}',
-                  ),
-                  Text(
-                    'Продавец: ${car.seller}',
-                  ),
-                  Text(
-                    'Статус: ${car.status}',
-                  ),
+                  Text('Госномер: ${car.plate}'),
+                  Text('Пробег: ${car.mileage}'),
+                  Text('Продавец: ${car.seller}'),
+                  Text('Статус: ${car.status}'),
                 ],
               ),
             ),
@@ -765,41 +893,22 @@ class _CarDetailsScreenState
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Финансы',
                     style: TextStyle(
                       fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 12),
-                  financeRow(
-                    'Цена покупки',
-                    car.purchase,
-                  ),
-                  financeRow(
-                    'Расходы',
-                    car.expensesTotal,
-                  ),
+                  financeRow('Цена покупки', car.purchase),
+                  financeRow('Расходы', car.expensesTotal),
                   const Divider(),
-                  financeRow(
-                    'Всего вложено',
-                    car.invested,
-                    bold: true,
-                  ),
-                  financeRow(
-                    'Цена продажи',
-                    car.sale,
-                  ),
-                  financeRow(
-                    'Прибыль',
-                    car.profit,
-                    bold: true,
-                  ),
+                  financeRow('Всего вложено', car.invested, bold: true),
+                  financeRow('Цена продажи', car.sale),
+                  financeRow('Прибыль', car.profit, bold: true),
                 ],
               ),
             ),
@@ -809,40 +918,31 @@ class _CarDetailsScreenState
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'Цена продажи',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: salePrice,
                     keyboardType:
-                        const TextInputType
-                            .numberWithOptions(
+                        const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration:
-                        const InputDecoration(
-                      labelText:
-                          'Цена продажи',
-                      border:
-                          OutlineInputBorder(),
+                    decoration: const InputDecoration(
+                      labelText: 'Цена продажи',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 10),
                   FilledButton(
-                    onPressed:
-                        saveSalePrice,
-                    child: const Text(
-                      'Сохранить',
-                    ),
+                    onPressed: saveSalePrice,
+                    child: const Text('Сохранить'),
                   ),
                 ],
               ),
@@ -853,58 +953,44 @@ class _CarDetailsScreenState
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
                         'Расходы',
                         style: TextStyle(
                           fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                       IconButton(
-                        onPressed:
-                            addExpense,
-                        icon: const Icon(
-                          Icons.add,
-                        ),
+                        onPressed: () => showExpenseDialog(),
+                        icon: const Icon(Icons.add),
                       ),
                     ],
                   ),
                   if (car.expenses.isEmpty)
-                    const Text(
-                      'Расходов пока нет',
-                    )
+                    const Text('Расходов пока нет')
                   else
                     ...car.expenses.map(
                       (expense) => ListTile(
-                        contentPadding:
-                            EdgeInsets.zero,
-                        title: Text(
-                          expense.category,
-                        ),
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(expense.category),
                         subtitle: Text(
                           expense.note.isEmpty
-                              ? 'Расход'
+                              ? 'Нажмите, чтобы изменить'
                               : expense.note,
                         ),
                         trailing: Text(
-                          money(
-                            expense.amount,
-                          ),
-                          style:
-                              const TextStyle(
-                            fontWeight:
-                                FontWeight.bold,
+                          money(expense.amount),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
+                        onTap: () =>
+                            showExpenseDialog(expense: expense),
                       ),
                     ),
                 ],
@@ -915,18 +1001,15 @@ class _CarDetailsScreenState
             const SizedBox(height: 12),
             Card(
               child: Padding(
-                padding:
-                    const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       'Примечания',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -948,28 +1031,20 @@ class _CarDetailsScreenState
     bool bold = false,
   }) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(
-        vertical: 4,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             title,
             style: TextStyle(
-              fontWeight: bold
-                  ? FontWeight.bold
-                  : null,
+              fontWeight: bold ? FontWeight.bold : null,
             ),
           ),
           Text(
             money(value),
             style: TextStyle(
-              fontWeight: bold
-                  ? FontWeight.bold
-                  : null,
+              fontWeight: bold ? FontWeight.bold : null,
             ),
           ),
         ],
