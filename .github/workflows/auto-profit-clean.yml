@@ -76,6 +76,12 @@ jobs:
           print("build.gradle.kts обновлён")
           PY
 
+      - name: Bump version automatically
+        run: |
+          VERSION="1.0.0+${{ github.run_number }}"
+          sed -i "s/^version: .*/version: $VERSION/" pubspec.yaml
+          echo "Автоматическая версия: $VERSION"
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -102,6 +108,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: auto-profit-apk
+          name: auto-profit-apk-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
