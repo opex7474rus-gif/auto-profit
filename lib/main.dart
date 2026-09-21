@@ -34,10 +34,21 @@ const List<String> kExpenseCategories = [
   'Прочее',
 ];
 
+const List<String> kTagSuggestions = [
+  'Срочно продать',
+  'Долг',
+  'Хорошая',
+  'Проблемная',
+  'Под клиента',
+  'На покраске',
+  'Ждёт документы',
+];
+
 const int kStaleDays = 30;
 const int kReminderDays = 3;
 const String kLastCheckKey = 'last_check_v1';
 const int kTrashDays = 30;
+const double kMinMargin = 30000;
 
 const Map<String, List<String>> kCarCatalog = {
   'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora', '2107', '2110', '2114', '2115'],
@@ -187,6 +198,7 @@ class Car {
   String notes;
   String salePrice;
   String saleDate;
+  List<String> tags;
   List<Expense> expenses;
   List<String> photos;
   List<Attachment> attachments;
@@ -209,6 +221,7 @@ class Car {
     required this.notes,
     required this.salePrice,
     required this.saleDate,
+    required this.tags,
     required this.expenses,
     required this.photos,
     required this.attachments,
@@ -233,6 +246,9 @@ class Car {
       notes: (json['notes'] ?? '') as String,
       salePrice: (json['salePrice'] ?? '') as String,
       saleDate: (json['saleDate'] ?? '') as String,
+      tags: ((json['tags'] ?? []) as List)
+          .map((e) => e.toString())
+          .toList(),
       expenses: ((json['expenses'] ?? []) as List)
           .map((e) => Expense.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -263,6 +279,7 @@ class Car {
         'notes': notes,
         'salePrice': salePrice,
         'saleDate': saleDate,
+        'tags': tags,
         'expenses': expenses.map((e) => e.toJson()).toList(),
         'photos': photos,
         'attachments': attachments.map((a) => a.toJson()).toList(),
@@ -286,6 +303,7 @@ class Car {
         notes: notes,
         salePrice: '',
         saleDate: '',
+        tags: List<String>.from(tags),
         expenses: [],
         photos: [],
         attachments: [],
@@ -305,6 +323,8 @@ class Car {
   double get profit => sale - invested;
 
   bool get isSold => sale > 0;
+
+  double get breakEvenPrice => invested + kMinMargin;
 
   DateTime? get purchaseDateTime {
     if (purchaseDate.isEmpty) return null;
@@ -394,6 +414,33 @@ class Storage {
       _key,
       jsonEncode(cars.map((c) => c.toJson()).toList()),
     );
+    await autoBackup(cars);
+  }
+
+  static Future<void> autoBackup(List<Car> cars) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final backupDir = Directory(p.join(dir.path, 'AutoProfit', 'backups'));
+      if (!await backupDir.exists()) {
+        await backupDir.create(recursive: true);
+      }
+      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final file = File(p.join(backupDir.path, 'backup_$date.json'));
+      await file.writeAsString(
+        jsonEncode(cars.map((c) => c.toJson()).toList()),
+      );
+      final files = backupDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.json'))
+          .toList()
+        ..sort((a, b) => b.path.compareTo(a.path));
+      for (int i = 7; i < files.length; i++) {
+        try {
+          await files[i].delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   static Future<List<TrashEntry>> loadTrash() async {
@@ -428,7 +475,6 @@ class Storage {
       if (now.difference(d).inDays < kTrashDays) {
         cleaned.add(t);
       } else {
-        // удаляем файлы
         for (final path in t.car.photos) {
           try {
             final f = File(path);
@@ -583,6 +629,10 @@ class Analytics {
   double get profitThisMonth =>
       soldThisMonth.fold(0.0, (s, c) => s + c.profit);
 
+  double get averageProfitThisMonth => soldThisMonthCount == 0
+      ? 0
+      : profitThisMonth / soldThisMonthCount;
+
   double get totalPurchase => cars.fold(0, (s, c) => s + c.purchase);
   double get totalPurchaseStock =>
       stockCars.fold(0, (s, c) => s + c.purchase);
@@ -602,11 +652,8 @@ class Analytics {
   double get totalInvestedSold =>
       totalPurchaseSold + totalExpensesSold;
 
-  double get totalRevenue =>
-      soldCars.fold(0, (s, c) => s + c.sale);
-
-  double get totalProfit =>
-      soldCars.fold(0, (s, c) => s + c.profit);
+  double get totalRevenue => soldCars.fold(0, (s, c) => s + c.sale);
+  double get totalProfit => soldCars.fold(0, (s, c) => s + c.profit);
 
   double get averageProfit =>
       soldCars.isEmpty ? 0 : totalProfit / soldCars.length;
@@ -637,6 +684,14 @@ class Analytics {
   Car? get worstCar {
     if (soldCars.isEmpty) return null;
     return soldCars.reduce((a, b) => a.profit <= b.profit ? a : b);
+  }
+
+  Map<String, int> get statusCounts {
+    final map = <String, int>{};
+    for (final s in kStatuses) {
+      map[s] = cars.where((c) => c.status == s).length;
+    }
+    return map;
   }
 
   List<CategoryStat> get topExpenseCategories {
@@ -726,7 +781,7 @@ class _KpiCard extends StatelessWidget {
             Text(
               value,
               style: const TextStyle(
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
               maxLines: 1,
@@ -795,10 +850,7 @@ class _DetailRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 14),
-            ),
+            child: Text(label, style: const TextStyle(fontSize: 14)),
           ),
           Text(
             value,
@@ -1100,7 +1152,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.5,
+          childAspectRatio: 1.4,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
           children: [
@@ -1119,18 +1171,31 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               color: Colors.teal,
             ),
             _KpiCard(
-              title: 'Чистая прибыль',
+              title: 'Прибыль за месяц',
+              value: moneyShort(a.profitThisMonth),
+              subtitle: '${a.soldThisMonthCount} проданных за месяц',
+              icon: Icons.calendar_today,
+              color:
+                  a.profitThisMonth >= 0 ? Colors.green : Colors.red,
+            ),
+            _KpiCard(
+              title: 'Прибыль всего',
               value: moneyShort(a.totalProfit),
-              subtitle: a.soldCars.isEmpty
-                  ? 'нет проданных'
-                  : '${a.soldCars.length} проданных',
+              subtitle: '${a.soldAllTimeCount} проданных за всё время',
               icon: Icons.trending_up,
               color: a.totalProfit >= 0 ? Colors.green : Colors.red,
             ),
             _KpiCard(
-              title: 'Средняя прибыль',
+              title: 'Средняя за месяц',
+              value: moneyShort(a.averageProfitThisMonth),
+              subtitle: 'с машины в этом месяце',
+              icon: Icons.calculate,
+              color: Colors.cyan,
+            ),
+            _KpiCard(
+              title: 'Средняя всего',
               value: moneyShort(a.averageProfit),
-              subtitle: 'с одной машины',
+              subtitle: 'с машины за всё время',
               icon: Icons.attach_money,
               color: Colors.indigo,
             ),
@@ -1140,22 +1205,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               subtitle: moneyShort(a.totalInvestedStock),
               icon: Icons.directions_car,
               color: Colors.orange,
-            ),
-            _KpiCard(
-              title: 'Проданных',
-              value: '${a.soldThisMonthCount} в этом месяце',
-              subtitle: '${a.soldAllTimeCount} за всё время',
-              icon: Icons.check_circle,
-              color: Colors.green,
-            ),
-            _KpiCard(
-              title: 'Средний срок',
-              value: a.soldCars.isEmpty
-                  ? '—'
-                  : '${a.averageDaysToSell.toStringAsFixed(0)} дн.',
-              subtitle: 'от покупки до продажи',
-              icon: Icons.schedule,
-              color: Colors.deepPurple,
             ),
             _KpiCard(
               title: 'Рентабельность',
@@ -1250,8 +1299,9 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   _DetailRow(
                     label: 'Прибыль за всё время',
                     value: money(a.totalProfit),
-                    valueColor:
-                        a.totalProfit >= 0 ? Colors.green : Colors.red,
+                    valueColor: a.totalProfit >= 0
+                        ? Colors.green
+                        : Colors.red,
                   ),
                 ],
               ),
@@ -1275,7 +1325,14 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     value: money(a.averageSalePrice),
                   ),
                   _DetailRow(
-                    label: 'Средняя прибыль',
+                    label: 'Средняя прибыль за месяц',
+                    value: money(a.averageProfitThisMonth),
+                    valueColor: a.averageProfitThisMonth >= 0
+                        ? Colors.green
+                        : Colors.red,
+                  ),
+                  _DetailRow(
+                    label: 'Средняя прибыль за всё время',
                     value: money(a.averageProfit),
                     valueColor: a.averageProfit >= 0
                         ? Colors.green
@@ -1394,7 +1451,8 @@ class _HomeScreenState extends State<HomeScreen> {
           c.model.toLowerCase().contains(q) ||
           c.vin.toLowerCase().contains(q) ||
           c.plate.toLowerCase().contains(q) ||
-          c.seller.toLowerCase().contains(q);
+          c.seller.toLowerCase().contains(q) ||
+          c.tags.any((t) => t.toLowerCase().contains(q));
     }).toList();
   }
 
@@ -1493,6 +1551,15 @@ class _HomeScreenState extends State<HomeScreen> {
     _load();
   }
 
+  void openHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HistoryScreen(cars: cars),
+      ),
+    );
+  }
+
   IconData _themeIcon(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.light:
@@ -1581,8 +1648,17 @@ class _HomeScreenState extends State<HomeScreen> {
               if (value == 'csv') exportCsv(cars);
               if (value == 'import') importJson();
               if (value == 'trash') openTrash();
+              if (value == 'history') openHistory();
             },
             itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'history',
+                child: ListTile(
+                  leading: Icon(Icons.history),
+                  title: Text('История покупок/продаж'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
               const PopupMenuItem(
                 value: 'export',
                 child: ListTile(
@@ -1704,13 +1780,74 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            sliver: SliverToBoxAdapter(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Автомобили по статусам',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...kStatuses.map((status) {
+                        final count = a.statusCounts[status] ?? 0;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4),
+                          child: Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      color: _statusColor(status),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    status,
+                                    style:
+                                        const TextStyle(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                '$count',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
             sliver: SliverToBoxAdapter(
               child: TextField(
                 controller: searchController,
                 onChanged: (v) => setState(() => search = v),
                 decoration: InputDecoration(
-                  hintText: 'Поиск: марка, VIN, госномер…',
+                  hintText: 'Поиск: марка, VIN, госномер, тег…',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: search.isEmpty
                       ? null
@@ -1845,66 +1982,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemCount: visible.length,
                 itemBuilder: (context, index) {
                   final car = visible[index];
-                  return _CarListTile(
-                    car: car,
-                    onTap: () => openCar(car),
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
-class _ModeTab extends StatelessWidget {
-  final String label;
-  final int count;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeTab({
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: selected ? 2 : 0,
-      color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surfaceContainerHighest,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Center(
-            child: Text(
-              '$label ($count)',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: selected
-                    ? theme.colorScheme.onPrimaryContainer
-                    : theme.colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-class _CarListTile extends StatelessWidget {
+                    class _CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
+  final VoidCallback onQuickExpense;
 
-  const _CarListTile({required this.car, required this.onTap});
+  const _CarListTile({
+    required this.car,
+    required this.onTap,
+    required this.onQuickExpense,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1926,6 +2014,7 @@ class _CarListTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onQuickExpense,
         child: Padding(
           padding: const EdgeInsets.all(10),
           child: Row(
@@ -1980,6 +2069,37 @@ class _CarListTile extends StatelessWidget {
                       ].join(' • '),
                       style: theme.textTheme.bodySmall,
                     ),
+                    if (car.tags.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: car.tags
+                            .take(3)
+                            .map(
+                              (t) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme
+                                      .secondaryContainer,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  t,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: theme.colorScheme
+                                        .onSecondaryContainer,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     if (car.isSold)
                       Text(
@@ -2065,7 +2185,7 @@ class _PhotoThumb extends StatelessWidget {
     );
   }
 }
-class _AutocompleteField extends StatelessWidget {
+                    class _AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final String label;
@@ -2121,7 +2241,8 @@ class _AutocompleteField extends StatelessWidget {
               elevation: 4,
               borderRadius: BorderRadius.circular(8),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220, maxWidth: 320),
+                constraints:
+                    const BoxConstraints(maxHeight: 220, maxWidth: 320),
                 child: ListView.builder(
                   padding: EdgeInsets.zero,
                   shrinkWrap: true,
@@ -2190,6 +2311,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
 
   String status = 'Куплен';
   DateTime? purchaseDate;
+  final Set<String> tags = {};
 
   bool get isEdit => widget.car != null;
 
@@ -2211,6 +2333,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       notes.text = c.notes;
       status = c.status;
       purchaseDate = c.purchaseDateTime;
+      tags.addAll(c.tags);
     } else {
       purchaseDate = DateTime.now();
     }
@@ -2254,6 +2377,38 @@ class _CarFormScreenState extends State<CarFormScreen> {
     if (picked != null) setState(() => purchaseDate = picked);
   }
 
+  Future<void> _addCustomTag() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Свой тег'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Название',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Добавить'),
+          ),
+        ],
+      ),
+    );
+    if (result != null && result.isNotEmpty) {
+      setState(() => tags.add(result));
+    }
+  }
+
   void save() {
     if (make.text.trim().isEmpty || model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2279,6 +2434,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       c.sellerPhone = sellerPhone.text.trim();
       c.sellerAddress = sellerAddress.text.trim();
       c.notes = notes.text.trim();
+      c.tags = tags.toList();
       widget.onSave(c);
     } else {
       widget.onSave(
@@ -2300,6 +2456,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           notes: notes.text.trim(),
           salePrice: '',
           saleDate: '',
+          tags: tags.toList(),
           expenses: [],
           photos: [],
           attachments: [],
@@ -2335,6 +2492,11 @@ class _CarFormScreenState extends State<CarFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final allTagOptions = <String>{
+      ...kTagSuggestions,
+      ...tags,
+    }.toList();
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -2367,12 +2529,12 @@ class _CarFormScreenState extends State<CarFormScreen> {
                     .expand((e) => e)
                     .toSet()
                     .toList();
-                return all.where((m) => m.toLowerCase().contains(lower));
+                return all
+                    .where((m) => m.toLowerCase().contains(lower));
               }
               final models = kCarCatalog[brand] ?? [];
-              return models.where(
-                (m) => m.toLowerCase().contains(lower),
-              );
+              return models
+                  .where((m) => m.toLowerCase().contains(lower));
             },
           ),
           _AutocompleteField(
@@ -2423,6 +2585,38 @@ class _CarFormScreenState extends State<CarFormScreen> {
               if (value != null) setState(() => status = value);
             },
           ),
+          const SizedBox(height: 14),
+          const Text(
+            'Метки',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ...allTagOptions.map(
+                (t) => FilterChip(
+                  label: Text(t),
+                  selected: tags.contains(t),
+                  onSelected: (sel) {
+                    setState(() {
+                      if (sel) {
+                        tags.add(t);
+                      } else {
+                        tags.remove(t);
+                      }
+                    });
+                  },
+                ),
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.add, size: 18),
+                label: const Text('Свой'),
+                onPressed: _addCustomTag,
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: save,
@@ -2436,7 +2630,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-class CarDetailsScreen extends StatefulWidget {
+                    class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
@@ -2645,6 +2839,21 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  if (car.tags.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: car.tags
+                          .map(
+                            (t) => Chip(
+                              label: Text(t),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   _infoRow('Год', car.year),
                   _infoRow('VIN', car.vin),
@@ -2737,6 +2946,13 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   financeRow('Расходы', car.expensesTotal),
                   const Divider(),
                   financeRow('Всего вложено', car.invested, bold: true),
+                  financeRow(
+                    'Безубыточная цена (маржа ${money(kMinMargin)})',
+                    car.breakEvenPrice,
+                    bold: true,
+                    valueColor: Colors.orange,
+                  ),
+                  const Divider(),
                   financeRow('Цена продажи', car.sale),
                   financeRow('Прибыль', car.profit, bold: true),
                 ],
@@ -2833,24 +3049,39 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
-  Widget financeRow(String title, double value, {bool bold = false}) {
+  Widget financeRow(
+    String title,
+    double value, {
+    bool bold = false,
+    Color? valueColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title,
+          Expanded(
+            child: Text(
+              title,
               style: TextStyle(
-                  fontWeight: bold ? FontWeight.bold : null)),
-          Text(money(value),
-              style: TextStyle(
-                  fontWeight: bold ? FontWeight.bold : null)),
+                fontWeight: bold ? FontWeight.bold : null,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Text(
+            money(value),
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : null,
+              color: valueColor,
+            ),
+          ),
         ],
       ),
     );
   }
 }
-class _PhotosBlock extends StatelessWidget {
+                    class _PhotosBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -3198,7 +3429,7 @@ class _DocumentsBlock extends StatelessWidget {
     );
   }
 }
-class _ExpensesBlock extends StatelessWidget {
+                    class _ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -3308,8 +3539,7 @@ Future<void> showExpenseDialog({
                   const SizedBox(height: 10),
                   TextField(
                     controller: amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
+                    keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
@@ -3370,8 +3600,7 @@ Future<void> showExpenseDialog({
                   onChanged();
                   Navigator.pop(dialogContext);
                 },
-                child:
-                    Text(expense == null ? 'Добавить' : 'Сохранить'),
+                child: Text(expense == null ? 'Добавить' : 'Сохранить'),
               ),
             ],
           );
@@ -3380,7 +3609,7 @@ Future<void> showExpenseDialog({
     },
   );
 }
-class TrashScreen extends StatefulWidget {
+   class TrashScreen extends StatefulWidget {
   final void Function(Car) onRestore;
 
   const TrashScreen({super.key, required this.onRestore});
@@ -3532,7 +3761,98 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-class _ContractDialog extends StatefulWidget {
+                    class HistoryEvent {
+  final DateTime date;
+  final String type;
+  final Car car;
+  final double amount;
+  HistoryEvent({
+    required this.date,
+    required this.type,
+    required this.car,
+    required this.amount,
+  });
+}
+
+class HistoryScreen extends StatelessWidget {
+  final List<Car> cars;
+  const HistoryScreen({super.key, required this.cars});
+
+  List<HistoryEvent> _events() {
+    final list = <HistoryEvent>[];
+    for (final c in cars) {
+      final pd = c.purchaseDateTime;
+      if (pd != null) {
+        list.add(HistoryEvent(
+          date: pd,
+          type: 'Покупка',
+          car: c,
+          amount: c.purchase,
+        ));
+      }
+      final sd = c.saleDateTime;
+      if (sd != null) {
+        list.add(HistoryEvent(
+          date: sd,
+          type: 'Продажа',
+          car: c,
+          amount: c.sale,
+        ));
+      }
+    }
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _events();
+    return Scaffold(
+      appBar: AppBar(title: const Text('История покупок и продаж')),
+      body: events.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Пока нет ни покупок, ни продаж',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: events.length,
+              itemBuilder: (context, index) {
+                final e = events[index];
+                final isBuy = e.type == 'Покупка';
+                final color = isBuy ? Colors.blue : Colors.green;
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      child: Icon(
+                        isBuy ? Icons.shopping_cart : Icons.sell,
+                        color: color,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '${e.type}: ${e.car.make} ${e.car.model}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${formatDate(e.date)} • ${money(e.amount)}',
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
 
@@ -3550,7 +3870,6 @@ class _ContractDialogState extends State<_ContractDialog> {
   final buyerAddress = TextEditingController();
   final buyerPhone = TextEditingController();
   final priceController = TextEditingController();
-  final sellerIsMe = ValueNotifier<bool>(true);
   bool _loaded = false;
 
   @override
@@ -3588,7 +3907,6 @@ class _ContractDialogState extends State<_ContractDialog> {
     buyerAddress.dispose();
     buyerPhone.dispose();
     priceController.dispose();
-    sellerIsMe.dispose();
     super.dispose();
   }
 
@@ -3721,8 +4039,7 @@ class _ContractDialogState extends State<_ContractDialog> {
     );
   }
 }
-
-Future<void> saveContractHtml(
+   Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -3737,81 +4054,104 @@ Future<void> saveContractHtml(
   final priceWords = _numToRussianWords(priceNum.round());
 
   String row(String label, String value) =>
-      '<tr><td class="lbl">$label</td><td>$value</td></tr>';
+      '<tr><td class="lbl">$label</td><td class="val">$value</td></tr>';
 
   final html = '''
 <!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <title>ДКП ${car.make} ${car.model}</title>
 <style>
-  body{font-family:Georgia,serif;margin:30px;line-height:1.5;color:#000;}
-  h1{text-align:center;font-size:18px;margin-bottom:4px;}
-  .sub{text-align:center;font-size:14px;margin-bottom:20px;}
-  .place{text-align:right;font-size:13px;margin-bottom:18px;}
-  p{text-align:justify;font-size:14px;margin:6px 0;}
-  table{width:100%;border-collapse:collapse;margin:8px 0 16px;}
-  .lbl{width:35%;padding:4px 8px;vertical-align:top;font-weight:bold;}
-  td{padding:4px 8px;vertical-align:top;border-bottom:1px solid #ddd;font-size:14px;}
-  h3{font-size:15px;margin-top:20px;margin-bottom:6px;}
-  .sign{display:flex;justify-content:space-between;margin-top:30px;font-size:14px;}
-  .sign div{width:45%;}
-  .line{border-bottom:1px solid #000;height:20px;margin-bottom:4px;}
-  @media print{body{margin:15mm;}}
+  *{box-sizing:border-box;}
+  body{font-family:'Times New Roman',serif;margin:25px;line-height:1.45;color:#000;font-size:13px;}
+  h1{text-align:center;font-size:16px;margin:0 0 4px;letter-spacing:.5px;}
+  .sub{text-align:center;font-size:12px;margin-bottom:14px;}
+  .place{text-align:right;font-size:12px;margin-bottom:14px;}
+  h3{font-size:13px;margin:14px 0 6px;border-bottom:1px solid #000;padding-bottom:3px;}
+  p{text-align:justify;font-size:12.5px;margin:5px 0;}
+  table{width:100%;border-collapse:collapse;margin:6px 0;}
+  td{padding:3px 6px;vertical-align:top;font-size:12.5px;border-bottom:1px dotted #999;}
+  .lbl{width:38%;font-weight:bold;}
+  .val{width:62%;}
+  .sign{display:flex;justify-content:space-between;margin-top:34px;}
+  .sign>div{width:46%;}
+  .line{border-bottom:1px solid #000;height:22px;margin-bottom:3px;}
+  .hint{font-size:11px;color:#555;}
+  @media print{body{margin:12mm;} .noprint{display:none;}}
 </style></head><body>
-<h1>ДОГОВОР КУПЛИ-ПРОДАЖИ АВТОМОБИЛЯ</h1>
-<div class="sub">№ ${car.id} от $day $month $year</div>
-<div class="place">г. __________, $day $month $year</div>
+
+<h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТРАНСПОРТНОГО СРЕДСТВА</h1>
+<div class="sub">№ ${car.id} от $day $month $year г.</div>
+<div class="place">г. _________________, $day $month $year г.</div>
 
 <p>Гражданин(ка) <b>${seller['fio'] ?? ''}</b>, паспорт ${seller['passport'] ?? ''},
 зарегистрированный(ая) по адресу: ${seller['address'] ?? ''},
-телефон: ${seller['phone'] ?? ''} — именуемый(ая) в дальнейшем «Продавец»,
-с одной стороны, и</p>
+телефон: ${seller['phone'] ?? ''} — «Продавец», с одной стороны, и</p>
 
 <p>Гражданин(ка) <b>${buyer['fio'] ?? ''}</b>, паспорт ${buyer['passport'] ?? ''},
 зарегистрированный(ая) по адресу: ${buyer['address'] ?? ''},
-телефон: ${buyer['phone'] ?? ''} — именуемый(ая) в дальнейшем «Покупатель»,
-с другой стороны, заключили настоящий договор о нижеследующем.</p>
+телефон: ${buyer['phone'] ?? ''} — «Покупатель», с другой стороны,
+заключили настоящий договор о нижеследующем.</p>
 
-<h3>1. Предмет договора</h3>
+<h3>1. ПРЕДМЕТ ДОГОВОРА</h3>
 <p>Продавец передаёт, а Покупатель принимает в собственность транспортное средство:</p>
 <table>
-${row('Марка, модель', '${car.make} ${car.model}')}
+${row('Марка, модель ТС', '${car.make} ${car.model}')}
 ${row('Год выпуска', car.year)}
-${row('VIN', car.vin)}
-${row('Государственный номер', car.plate)}
-${row('Пробег', car.mileage.isEmpty ? '—' : '${car.mileage} км')}
+${row('Идентификационный номер (VIN)', car.vin)}
+${row('Государственный регистрационный знак', car.plate)}
+${row('Пробег, км', car.mileage.isEmpty ? '—' : car.mileage)}
 ${row('Техническое состояние', 'удовлетворительное')}
 </table>
 
-<h3>2. Цена и порядок расчётов</h3>
-<p>Стоимость транспортного средства составляет <b>$priceRub ₽</b>
-($priceWords).</p>
+<h3>2. ЦЕНА И ПОРЯДОК РАСЧЁТОВ</h3>
+<p>Стоимость ТС составляет <b>$priceRub ₽</b> ($priceWords).</p>
 <p>Денежные средства переданы Продавцу в полном объёме до подписания
-настоящего договора.</p>
+настоящего договора. Претензий по расчётам Стороны не имеют.</p>
 
-<h3>3. Передача автомобиля</h3>
+<h3>3. ПЕРЕДАЧА АВТОМОБИЛЯ</h3>
 <p>Продавец передаёт Покупателю автомобиль, ключи, ПТС, СТС и иные
 документы, необходимые для регистрации в ГИБДД. Покупатель обязуется
 в течение 10 дней со дня подписания договора обратиться в органы
-ГИБДД для перерегистрации транспортного средства.</p>
+ГИБДД для перерегистрации транспортного средства на своё имя.</p>
 
-<h3>4. Прочие условия</h3>
-<p>Договор составлен в трёх экземплярах: по одному для Продавца и
-Покупателя, третий — для органов ГИБДД. Все экземпляры имеют одинаковую
-юридическую силу.</p>
+<h3>4. ОТВЕТСТВЕННОСТЬ СТОРОН</h3>
+<p>Продавец гарантирует, что ТС не находится в залоге, не является
+предметом спора третьих лиц, не обременено иными обязательствами, а
+также не числится в угоне. Все известные недостатки ТС сообщены
+Покупателю до подписания договора.</p>
+
+<h3>5. ПРОЧИЕ УСЛОВИЯ</h3>
+<p>Договор вступает в силу с момента подписания. Составлен в трёх
+экземплярах: по одному для Продавца и Покупателя, третий — для органов
+ГИБДД. Все экземпляры имеют одинаковую юридическую силу.</p>
 
 <div class="sign">
   <div>
     <b>Продавец</b>
     <div class="line"></div>
-    <div style="font-size:12px;">${seller['fio'] ?? ''}</div>
+    <div class="hint">${seller['fio'] ?? ''}</div>
   </div>
   <div>
     <b>Покупатель</b>
     <div class="line"></div>
-    <div style="font-size:12px;">${buyer['fio'] ?? ''}</div>
+    <div class="hint">${buyer['fio'] ?? ''}</div>
   </div>
 </div>
+
+<p style="margin-top:24px;text-align:center;" class="hint">
+Денежные средства в размере $priceRub ₽ получил, транспортное средство передал:
+</p>
+<div class="sign">
+  <div>
+    <div class="line"></div>
+    <div class="hint">подпись Продавца</div>
+  </div>
+  <div>
+    <div class="line"></div>
+    <div class="hint">подпись Покупателя</div>
+  </div>
+</div>
+
 </body></html>
 ''';
 
@@ -3825,8 +4165,8 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-}
-String _numToRussianWords(int n) {
+   }
+                    String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
     '', 'один', 'два', 'три', 'четыре', 'пять',
@@ -3918,14 +4258,13 @@ String _numToRussianWords(int n) {
   parts.add('00 копеек');
   final joined = parts.where((x) => x.isNotEmpty).join(' ');
   return joined[0].toUpperCase() + joined.substring(1);
-}
-
-Future<void> exportCsv(List<Car> cars) async {
+                    }
+                    Future<void> exportCsv(List<Car> cars) async {
   final buf = StringBuffer();
   buf.writeln(
-    'Марка;Модель;Год;VIN;Госномер;Статус;Дата покупки;Дней на складе;'
-    'Дней в статусе;Цена покупки;Расходы;Всего вложено;Цена продажи;'
-    'Дата продажи;Прибыль',
+    'Марка;Модель;Год;VIN;Госномер;Статус;Метки;Дата покупки;'
+    'Дней на складе;Дней в статусе;Цена покупки;Расходы;Всего вложено;'
+    'Безубыточная цена;Цена продажи;Дата продажи;Прибыль',
   );
   for (final c in cars) {
     buf.writeln([
@@ -3935,12 +4274,14 @@ Future<void> exportCsv(List<Car> cars) async {
       c.vin,
       c.plate,
       c.status,
+      c.tags.join(', '),
       c.purchaseDate,
       c.daysInStock,
       c.daysInCurrentStatus,
       c.purchase.toStringAsFixed(0),
       c.expensesTotal.toStringAsFixed(0),
       c.invested.toStringAsFixed(0),
+      c.breakEvenPrice.toStringAsFixed(0),
       c.sale.toStringAsFixed(0),
       c.saleDate,
       c.profit.toStringAsFixed(0),
@@ -3953,4 +4294,4 @@ Future<void> exportCsv(List<Car> cars) async {
     [XFile(file.path)],
     text: 'Отчёт Авто Профит',
   );
-}
+                    }
