@@ -28,7 +28,7 @@ jobs:
 
       - name: Decode Keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/upload-keystore.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/upload-keystore.jks
 
       - name: Create key.properties
         run: |
@@ -83,12 +83,9 @@ jobs:
         run: |
           mkdir -p assets
           if [ ! -f assets/icon.png ]; then
-            echo "assets/icon.png не найден — генерирую стандартную иконку"
             convert -size 1024x1024 xc:'#1565C0' \
               -gravity center -fill white -pointsize 400 \
               -annotate 0 'AP' assets/icon.png
-          else
-            echo "Использую свою иконку assets/icon.png"
           fi
 
       - name: Generate launcher icons
