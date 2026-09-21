@@ -260,8 +260,7 @@ class Car {
           .toList(),
     );
   }
-
-  Map<String, dynamic> toJson() => {
+      Map<String, dynamic> toJson() => {
         'id': id,
         'make': make,
         'model': model,
@@ -285,29 +284,35 @@ class Car {
         'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 
-  Car duplicate() => Car(
-        id: newId(),
-        make: make,
-        model: model,
-        year: year,
-        vin: '',
-        plate: '',
-        mileage: mileage,
-        purchasePrice: purchasePrice,
-        purchaseDate: todayIso(),
-        status: 'Куплен',
-        statusChangedAt: todayIso(),
-        seller: seller,
-        sellerPhone: sellerPhone,
-        sellerAddress: sellerAddress,
-        notes: notes,
-        salePrice: '',
-        saleDate: '',
-        tags: List<String>.from(tags),
-        expenses: [],
-        photos: [],
-        attachments: [],
-      );
+  Car duplicate() {
+    final now = DateTime.now();
+    final iso = '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    return Car(
+      id: now.microsecondsSinceEpoch.toString(),
+      make: make,
+      model: model,
+      year: year,
+      vin: '',
+      plate: '',
+      mileage: mileage,
+      purchasePrice: purchasePrice,
+      purchaseDate: iso,
+      status: 'Куплен',
+      statusChangedAt: iso,
+      seller: seller,
+      sellerPhone: sellerPhone,
+      sellerAddress: sellerAddress,
+      notes: notes,
+      salePrice: '',
+      saleDate: '',
+      tags: List<String>.from(tags),
+      expenses: [],
+      photos: [],
+      attachments: [],
+    );
+  }
 
   double get purchase =>
       double.tryParse(purchasePrice.replaceAll(',', '.')) ?? 0;
@@ -420,7 +425,8 @@ class Storage {
   static Future<void> autoBackup(List<Car> cars) async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final backupDir = Directory(p.join(dir.path, 'AutoProfit', 'backups'));
+      final backupDir =
+          Directory(p.join(dir.path, 'AutoProfit', 'backups'));
       if (!await backupDir.exists()) {
         await backupDir.create(recursive: true);
       }
@@ -547,7 +553,6 @@ class Storage {
   static Future<void> saveBuyerData(Map<String, String> data) =>
       savePartyData(_buyerKey, data);
 }
-
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
 String money(double value) {
@@ -591,6 +596,44 @@ List<String> get kYearList {
 
 bool isSameMonth(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month;
+
+Future<void> exportCsv(List<Car> cars) async {
+  final buf = StringBuffer();
+  buf.writeln(
+    'Марка;Модель;Год;VIN;Госномер;Статус;Метки;Дата покупки;'
+    'Дней на складе;Дней в статусе;Цена покупки;Расходы;Всего вложено;'
+    'Безубыточная цена;Цена продажи;Дата продажи;Прибыль',
+  );
+  for (final c in cars) {
+    buf.writeln([
+      c.make,
+      c.model,
+      c.year,
+      c.vin,
+      c.plate,
+      c.status,
+      c.tags.join(', '),
+      c.purchaseDate,
+      c.daysInStock,
+      c.daysInCurrentStatus,
+      c.purchase.toStringAsFixed(0),
+      c.expensesTotal.toStringAsFixed(0),
+      c.invested.toStringAsFixed(0),
+      c.breakEvenPrice.toStringAsFixed(0),
+      c.sale.toStringAsFixed(0),
+      c.saleDate,
+      c.profit.toStringAsFixed(0),
+    ].join(';'));
+  }
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/auto_profit_report.csv');
+  await file.writeAsString(buf.toString());
+  await Share.shareXFiles(
+    [XFile(file.path)],
+    text: 'Отчёт Авто Профит',
+  );
+}
+
 class MonthStat {
   final String label;
   final double profit;
@@ -607,7 +650,6 @@ class CategoryStat {
   final double amount;
   CategoryStat({required this.name, required this.amount});
 }
-
 class Analytics {
   final List<Car> cars;
 
@@ -865,7 +907,6 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
-
 class _ExpensesTopCard extends StatelessWidget {
   final List<CategoryStat> stats;
   final double totalExpenses;
@@ -1020,7 +1061,6 @@ class _MonthlyChart extends StatelessWidget {
     );
   }
 }
-
 class _BestWorstCard extends StatelessWidget {
   final Car? best;
   final Car? worst;
@@ -1129,6 +1169,7 @@ class _BestWorstCard extends StatelessWidget {
     );
   }
 }
+
 class _AnalyticsSection extends StatefulWidget {
   final Analytics analytics;
   const _AnalyticsSection({required this.analytics});
@@ -1217,7 +1258,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+                  const SizedBox(height: 8),
         Card(
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -1376,6 +1417,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
     );
   }
 }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -1418,327 +1460,325 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _checkReminder();
   }
-
-  Future<void> _checkReminder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastStr = prefs.getString(kLastCheckKey);
-    if (lastStr == null) {
-      await prefs.setString(kLastCheckKey, todayIso());
-      return;
-    }
-    final last = DateTime.tryParse(lastStr);
-    if (last == null) return;
-    final diff = DateTime.now().difference(last).inDays;
-    if (!mounted) return;
-    setState(() => showCheckReminder = diff >= kReminderDays);
-  }
-
-  Future<void> _dismissReminder() async {
-    final prefs = await SharedPreferences.getInstance();
+   Future<void> _checkReminder() async {
+  final prefs = await SharedPreferences.getInstance();
+  final lastStr = prefs.getString(kLastCheckKey);
+  if (lastStr == null) {
     await prefs.setString(kLastCheckKey, todayIso());
-    setState(() => showCheckReminder = false);
+    return;
   }
+  final last = DateTime.tryParse(lastStr);
+  if (last == null) return;
+  final diff = DateTime.now().difference(last).inDays;
+  if (!mounted) return;
+  setState(() => showCheckReminder = diff >= kReminderDays);
+}
 
-  Future<void> _persist() async => Storage.save(cars);
+Future<void> _dismissReminder() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString(kLastCheckKey, todayIso());
+  setState(() => showCheckReminder = false);
+}
 
-  Analytics get analytics => Analytics(cars);
+Future<void> _persist() async => Storage.save(cars);
 
-  List<Car> _filter(List<Car> src) {
-    final q = search.trim().toLowerCase();
-    if (q.isEmpty) return src;
-    return src.where((c) {
-      return c.make.toLowerCase().contains(q) ||
-          c.model.toLowerCase().contains(q) ||
-          c.vin.toLowerCase().contains(q) ||
-          c.plate.toLowerCase().contains(q) ||
-          c.seller.toLowerCase().contains(q) ||
-          c.tags.any((t) => t.toLowerCase().contains(q));
-    }).toList();
+Analytics get analytics => Analytics(cars);
+
+List<Car> _filter(List<Car> src) {
+  final q = search.trim().toLowerCase();
+  if (q.isEmpty) return src;
+  return src.where((c) {
+    return c.make.toLowerCase().contains(q) ||
+        c.model.toLowerCase().contains(q) ||
+        c.vin.toLowerCase().contains(q) ||
+        c.plate.toLowerCase().contains(q) ||
+        c.seller.toLowerCase().contains(q) ||
+        c.tags.any((t) => t.toLowerCase().contains(q));
+  }).toList();
+}
+
+List<Car> _sort(List<Car> src) {
+  final list = List<Car>.from(src);
+  switch (sortMode) {
+    case 'purchaseAsc':
+      list.sort((a, b) {
+        final da = a.purchaseDateTime ?? DateTime(2100);
+        final db = b.purchaseDateTime ?? DateTime(2100);
+        return da.compareTo(db);
+      });
+      break;
+    case 'profitDesc':
+      list.sort((a, b) => b.profit.compareTo(a.profit));
+      break;
+    case 'alpha':
+      list.sort((a, b) => '${a.make} ${a.model}'
+          .toLowerCase()
+          .compareTo('${b.make} ${b.model}'.toLowerCase()));
+      break;
+    case 'daysDesc':
+      list.sort((a, b) => b.daysInStock.compareTo(a.daysInStock));
+      break;
+    case 'purchaseDesc':
+    default:
+      list.sort((a, b) {
+        final da = a.purchaseDateTime ?? DateTime(1900);
+        final db = b.purchaseDateTime ?? DateTime(1900);
+        return db.compareTo(da);
+      });
   }
+  return list;
+}
 
-  List<Car> _sort(List<Car> src) {
-    final list = List<Car>.from(src);
-    switch (sortMode) {
-      case 'purchaseAsc':
-        list.sort((a, b) {
-          final da = a.purchaseDateTime ?? DateTime(2100);
-          final db = b.purchaseDateTime ?? DateTime(2100);
-          return da.compareTo(db);
-        });
-        break;
-      case 'profitDesc':
-        list.sort((a, b) => b.profit.compareTo(a.profit));
-        break;
-      case 'alpha':
-        list.sort((a, b) => '${a.make} ${a.model}'
-            .toLowerCase()
-            .compareTo('${b.make} ${b.model}'.toLowerCase()));
-        break;
-      case 'daysDesc':
-        list.sort((a, b) => b.daysInStock.compareTo(a.daysInStock));
-        break;
-      case 'purchaseDesc':
-      default:
-        list.sort((a, b) {
-          final da = a.purchaseDateTime ?? DateTime(1900);
-          final db = b.purchaseDateTime ?? DateTime(1900);
-          return db.compareTo(da);
-        });
-    }
-    return list;
-  }
-
-  void addCar() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarFormScreen(
-          onSave: (car) {
-            setState(() => cars.add(car));
-            _persist();
-          },
-        ),
+void addCar() {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => CarFormScreen(
+        onSave: (car) {
+          setState(() => cars.add(car));
+          _persist();
+        },
       ),
+    ),
+  );
+}
+
+void openCar(Car car) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => CarDetailsScreen(
+        car: car,
+        onChanged: () {
+          if (!mounted) return;
+          setState(() {});
+          _persist();
+        },
+        onDelete: () async {
+          final trash = await Storage.loadTrash();
+          trash.add(
+            TrashEntry(car: car, deletedAt: todayIso()),
+          );
+          await Storage.saveTrash(trash);
+          if (!mounted) return;
+          setState(() {
+            cars.removeWhere((c) => c.id == car.id);
+            trashCount = trash.length;
+          });
+          _persist();
+        },
+        onDuplicate: (newCar) {
+          setState(() => cars.add(newCar));
+          _persist();
+        },
+      ),
+    ),
+  );
+}
+
+void openTrash() async {
+  await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => TrashScreen(
+        onRestore: (car) {
+          setState(() => cars.add(car));
+          _persist();
+          _load();
+        },
+      ),
+    ),
+  );
+  _load();
+}
+
+void openHistory() {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => HistoryScreen(cars: cars),
+    ),
+  );
+}
+    IconData _themeIcon(ThemeMode mode) {
+  switch (mode) {
+    case ThemeMode.light:
+      return Icons.light_mode;
+    case ThemeMode.dark:
+      return Icons.dark_mode;
+    default:
+      return Icons.brightness_auto;
+  }
+}
+
+void _cycleTheme(ThemeMode mode) {
+  final next = mode == ThemeMode.system
+      ? ThemeMode.light
+      : mode == ThemeMode.light
+          ? ThemeMode.dark
+          : ThemeMode.system;
+  themeNotifier.value = next;
+  Storage.saveTheme(next);
+}
+
+Future<void> exportJson() async {
+  try {
+    final data = jsonEncode(cars.map((c) => c.toJson()).toList());
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/auto_profit_backup.json');
+    await file.writeAsString(data);
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      text: 'Резервная копия Авто Профит',
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка экспорта: $e')),
+    );
+  }
+}
+
+Future<void> importJson() async {
+  try {
+    final result = await FilePicker.platform.pickFiles();
+    if (result == null) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+    final content = await File(path).readAsString();
+    final list = jsonDecode(content) as List;
+    final imported = list
+        .map((e) => Car.fromJson(e as Map<String, dynamic>))
+        .toList();
+    if (!mounted) return;
+    setState(() => cars.addAll(imported));
+    _persist();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Импортировано ${imported.length} авто')),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка импорта: $e')),
+    );
+  }
+}
+
+@override
+Widget build(BuildContext context) {
+  if (loading) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 
-  void openCar(Car car) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarDetailsScreen(
-          car: car,
-          onChanged: () {
-            if (!mounted) return;
-            setState(() {});
-            _persist();
+  final theme = Theme.of(context);
+  final a = analytics;
+  final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
+  final visible = _sort(_filter(sourceList));
+
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Авто Профит'),
+      actions: [
+        PopupMenuButton<String>(
+          onSelected: (value) {
+            if (value == 'export') exportJson();
+            if (value == 'csv') exportCsv(cars);
+            if (value == 'import') importJson();
+            if (value == 'trash') openTrash();
+            if (value == 'history') openHistory();
           },
-          onDelete: () async {
-            final trash = await Storage.loadTrash();
-            trash.add(
-              TrashEntry(car: car, deletedAt: todayIso()),
-            );
-            await Storage.saveTrash(trash);
-            if (!mounted) return;
-            setState(() {
-              cars.removeWhere((c) => c.id == car.id);
-              trashCount = trash.length;
-            });
-            _persist();
-          },
-          onDuplicate: (newCar) {
-            setState(() => cars.add(newCar));
-            _persist();
-          },
-        ),
-      ),
-    );
-  }
-
-  void openTrash() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TrashScreen(
-          onRestore: (car) {
-            setState(() => cars.add(car));
-            _persist();
-            _load();
-          },
-        ),
-      ),
-    );
-    _load();
-  }
-
-  void openHistory() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => HistoryScreen(cars: cars),
-      ),
-    );
-  }
-
-  IconData _themeIcon(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return Icons.light_mode;
-      case ThemeMode.dark:
-        return Icons.dark_mode;
-      default:
-        return Icons.brightness_auto;
-    }
-  }
-
-  void _cycleTheme(ThemeMode mode) {
-    final next = mode == ThemeMode.system
-        ? ThemeMode.light
-        : mode == ThemeMode.light
-            ? ThemeMode.dark
-            : ThemeMode.system;
-    themeNotifier.value = next;
-    Storage.saveTheme(next);
-  }
-
-  Future<void> exportJson() async {
-    try {
-      final data = jsonEncode(cars.map((c) => c.toJson()).toList());
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/auto_profit_backup.json');
-      await file.writeAsString(data);
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Резервная копия Авто Профит',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка экспорта: $e')),
-      );
-    }
-  }
-
-  Future<void> importJson() async {
-    try {
-      final result = await FilePicker.platform.pickFiles();
-      if (result == null) return;
-      final path = result.files.single.path;
-      if (path == null) return;
-      final content = await File(path).readAsString();
-      final list = jsonDecode(content) as List;
-      final imported = list
-          .map((e) => Car.fromJson(e as Map<String, dynamic>))
-          .toList();
-      if (!mounted) return;
-      setState(() => cars.addAll(imported));
-      _persist();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Импортировано ${imported.length} авто')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка импорта: $e')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final theme = Theme.of(context);
-    final a = analytics;
-    final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
-    final visible = _sort(_filter(sourceList));
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Авто Профит'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'export') exportJson();
-              if (value == 'csv') exportCsv(cars);
-              if (value == 'import') importJson();
-              if (value == 'trash') openTrash();
-              if (value == 'history') openHistory();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'history',
-                child: ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('История покупок/продаж'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file),
-                  title: Text('Экспорт JSON'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'csv',
-                child: ListTile(
-                  leading: Icon(Icons.table_chart),
-                  title: Text('Экспорт CSV (Excel)'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'import',
-                child: ListTile(
-                  leading: Icon(Icons.download),
-                  title: Text('Импорт JSON'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'trash',
-                child: ListTile(
-                  leading: const Icon(Icons.delete_outline),
-                  title: Text('Корзина ($trashCount)'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: themeNotifier,
-            builder: (context, mode, _) => IconButton(
-              tooltip: 'Тема',
-              onPressed: () => _cycleTheme(mode),
-              icon: Icon(_themeIcon(mode)),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: addCar,
-        icon: const Icon(Icons.add),
-        label: const Text('Добавить'),
-      ),
-      body: CustomScrollView(
-        slivers: [
-          if (showCheckReminder)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.notifications_active,
-                        color: Colors.orange),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Прошло $kReminderDays дня. Проверьте машины на складе.',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _dismissReminder,
-                      child: const Text('Ок'),
-                    ),
-                  ],
-                ),
+          itemBuilder: (_) => [
+            const PopupMenuItem(
+              value: 'history',
+              child: ListTile(
+                leading: Icon(Icons.history),
+                title: Text('История покупок/продаж'),
+                contentPadding: EdgeInsets.zero,
               ),
             ),
-          if (a.staleCars.isNotEmpty)
+            const PopupMenuItem(
+              value: 'export',
+              child: ListTile(
+                leading: Icon(Icons.upload_file),
+                title: Text('Экспорт JSON'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'csv',
+              child: ListTile(
+                leading: Icon(Icons.table_chart),
+                title: Text('Экспорт CSV (Excel)'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'import',
+              child: ListTile(
+                leading: Icon(Icons.download),
+                title: Text('Импорт JSON'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'trash',
+              child: ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text('Корзина ($trashCount)'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, mode, _) => IconButton(
+            tooltip: 'Тема',
+            onPressed: () => _cycleTheme(mode),
+            icon: Icon(_themeIcon(mode)),
+          ),
+        ),
+      ],
+    ),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: addCar,
+      icon: const Icon(Icons.add),
+      label: const Text('Добавить'),
+    ),
+    body: CustomScrollView(
+      slivers: [
+        if (showCheckReminder)
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.notifications_active,
+                      color: Colors.orange),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Прошло $kReminderDays дня. Проверьте машины на складе.',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _dismissReminder,
+                    child: const Text('Ок'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+                    if (a.staleCars.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
                 margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -1799,8 +1839,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       ...kStatuses.map((status) {
                         final count = a.statusCounts[status] ?? 0;
                         return Padding(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 4),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 4),
                           child: Row(
                             mainAxisAlignment:
                                 MainAxisAlignment.spaceBetween,
@@ -1982,8 +2022,89 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemCount: visible.length,
                 itemBuilder: (context, index) {
                   final car = visible[index];
+                  return _CarListTile(
+                    car: car,
+                    onTap: () => openCar(car),
+                    onQuickExpense: () async {
+                      await showExpenseDialog(
+                        context: context,
+                        car: car,
+                        onChanged: () {
+                          setState(() {});
+                          _persist();
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
-                    class _CarListTile extends StatelessWidget {
+Color _statusColor(String status) {
+  switch (status) {
+    case 'Куплен':
+      return Colors.blue;
+    case 'В ремонте':
+      return Colors.orange;
+    case 'Готов к продаже':
+      return Colors.purple;
+    case 'На продаже':
+      return Colors.teal;
+    case 'Продан':
+      return Colors.green;
+    default:
+      return Colors.grey;
+  }
+}
+
+class _ModeTab extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeTab({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: selected ? 2 : 0,
+      color: selected
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surfaceContainerHighest,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Center(
+            child: Text(
+              '$label ($count)',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? theme.colorScheme.onPrimaryContainer
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+class _CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
   final VoidCallback onQuickExpense;
@@ -2185,7 +2306,8 @@ class _PhotoThumb extends StatelessWidget {
     );
   }
 }
-                    class _AutocompleteField extends StatelessWidget {
+
+class _AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final String label;
@@ -2269,7 +2391,6 @@ class _PhotoThumb extends StatelessWidget {
     );
   }
 }
-
 class CarFormScreen extends StatefulWidget {
   final Car? car;
   final void Function(Car car) onSave;
@@ -2630,7 +2751,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-                    class CarDetailsScreen extends StatefulWidget {
+class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
@@ -2821,7 +2942,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
           ),
         ],
       ),
-      body: ListView(
+              body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _PhotosBlock(car: car, onChanged: widget.onChanged),
@@ -2942,19 +3063,19 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  financeRow('Цена покупки', car.purchase),
-                  financeRow('Расходы', car.expensesTotal),
+                  _financeRow('Цена покупки', car.purchase),
+                  _financeRow('Расходы', car.expensesTotal),
                   const Divider(),
-                  financeRow('Всего вложено', car.invested, bold: true),
-                  financeRow(
+                  _financeRow('Всего вложено', car.invested, bold: true),
+                  _financeRow(
                     'Безубыточная цена (маржа ${money(kMinMargin)})',
                     car.breakEvenPrice,
                     bold: true,
                     valueColor: Colors.orange,
                   ),
                   const Divider(),
-                  financeRow('Цена продажи', car.sale),
-                  financeRow('Прибыль', car.profit, bold: true),
+                  _financeRow('Цена продажи', car.sale),
+                  _financeRow('Прибыль', car.profit, bold: true),
                 ],
               ),
             ),
@@ -3050,7 +3171,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
-  Widget financeRow(
+  Widget _financeRow(
     String title,
     double value, {
     bool bold = false,
@@ -3082,7 +3203,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 }
-                    class _PhotosBlock extends StatelessWidget {
+class _PhotosBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -3224,7 +3345,6 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 }
-
 class _DocumentsBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
@@ -3430,7 +3550,7 @@ class _DocumentsBlock extends StatelessWidget {
     );
   }
 }
-                    class _ExpensesBlock extends StatelessWidget {
+class _ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -3612,7 +3732,7 @@ Future<void> showExpenseDialog({
     },
   );
 }
-                    class TrashScreen extends StatefulWidget {
+class TrashScreen extends StatefulWidget {
   final void Function(Car) onRestore;
 
   const TrashScreen({super.key, required this.onRestore});
@@ -3765,7 +3885,8 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-                    class HistoryEvent {
+
+class HistoryEvent {
   final DateTime date;
   final String type;
   final Car car;
@@ -3857,7 +3978,7 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 }
-                    class _ContractDialog extends StatefulWidget {
+class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
 
@@ -4044,7 +4165,8 @@ class _ContractDialogState extends State<_ContractDialog> {
     );
   }
 }
-                    Future<void> saveContractHtml(
+
+Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -4171,8 +4293,9 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-                    }
-                    String _numToRussianWords(int n) {
+}
+
+String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
     '', 'один', 'два', 'три', 'четыре', 'пять',
@@ -4264,40 +4387,4 @@ ${row('Техническое состояние', 'удовлетворител
   parts.add('00 копеек');
   final joined = parts.where((x) => x.isNotEmpty).join(' ');
   return joined[0].toUpperCase() + joined.substring(1);
-                    }
-                    Future<void> exportCsv(List<Car> cars) async {
-  final buf = StringBuffer();
-  buf.writeln(
-    'Марка;Модель;Год;VIN;Госномер;Статус;Метки;Дата покупки;'
-    'Дней на складе;Дней в статусе;Цена покупки;Расходы;Всего вложено;'
-    'Безубыточная цена;Цена продажи;Дата продажи;Прибыль',
-  );
-  for (final c in cars) {
-    buf.writeln([
-      c.make,
-      c.model,
-      c.year,
-      c.vin,
-      c.plate,
-      c.status,
-      c.tags.join(', '),
-      c.purchaseDate,
-      c.daysInStock,
-      c.daysInCurrentStatus,
-      c.purchase.toStringAsFixed(0),
-      c.expensesTotal.toStringAsFixed(0),
-      c.invested.toStringAsFixed(0),
-      c.breakEvenPrice.toStringAsFixed(0),
-      c.sale.toStringAsFixed(0),
-      c.saleDate,
-      c.profit.toStringAsFixed(0),
-    ].join(';'));
-  }
-  final dir = await getTemporaryDirectory();
-  final file = File('${dir.path}/auto_profit_report.csv');
-  await file.writeAsString(buf.toString());
-  await Share.shareXFiles(
-    [XFile(file.path)],
-    text: 'Отчёт Авто Профит',
-  );
-                    }
+}
