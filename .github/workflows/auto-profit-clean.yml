@@ -26,6 +26,56 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name auto_profit
 
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/upload-keystore.jks
+
+      - name: Create key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Patch build.gradle.kts for signing
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path("android/app/build.gradle.kts")
+          src = p.read_text()
+
+          if "signingConfigs" not in src:
+              block = '''
+              signingConfigs {
+                  create("release") {
+                      val keystoreProperties = java.util.Properties()
+                      val keystorePropertiesFile = rootProject.file("key.properties")
+                      if (keystorePropertiesFile.exists()) {
+                          keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+                      }
+                      storeFile = file(keystoreProperties["storeFile"] as String)
+                      storePassword = keystoreProperties["storePassword"] as String
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["keyPassword"] as String
+                  }
+              }
+              '''
+              src = src.replace("android {", "android {" + block, 1)
+
+          if "signingConfig = signingConfigs.getByName" not in src:
+              src = re.sub(
+                  r'(release\s*\{)',
+                  r'\1\n            signingConfig = signingConfigs.getByName("release")',
+                  src,
+                  count=1,
+              )
+
+          p.write_text(src)
+          print("build.gradle.kts обновлён")
+          PY
+
       - name: Get dependencies
         run: flutter pub get
 
