@@ -275,7 +275,7 @@ class Storage {
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
 String money(double value) {
-  final f = NumberFormat('#,##0', 'ru_RU');
+  final f = NumberFormat('#,##0');
   return '${f.format(value).replaceAll(',', ' ')} ₽';
 }
 
@@ -442,27 +442,6 @@ class _HomeScreenState extends State<HomeScreen>
           .map((e) => Car.fromJson(e as Map<String, dynamic>))
           .toList();
       if (!mounted) return;
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Импорт данных'),
-          content: Text(
-            'Найдено ${imported.length} авто.\n\n'
-            'Заменить текущие данные или добавить к ним?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Отмена'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Добавить'),
-            ),
-          ],
-        ),
-      );
-      if (ok == null) return;
       setState(() {
         cars.addAll(imported);
       });
@@ -496,6 +475,7 @@ class _HomeScreenState extends State<HomeScreen>
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'export') exportJson();
+              if (value == 'csv') exportCsv(cars);
               if (value == 'import') importJson();
             },
             itemBuilder: (_) => const [
@@ -504,6 +484,14 @@ class _HomeScreenState extends State<HomeScreen>
                 child: ListTile(
                   leading: Icon(Icons.upload_file),
                   title: Text('Экспорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'csv',
+                child: ListTile(
+                  leading: Icon(Icons.table_chart),
+                  title: Text('Экспорт CSV (Excel)'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -627,7 +615,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 }
-
 class _CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
@@ -927,8 +914,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
             ),
           ),
           field(seller, 'Продавец (имя)'),
-          field(sellerPhone, 'Телефон продавца',
-              number: true),
+          field(sellerPhone, 'Телефон продавца', number: true),
           field(sellerAddress, 'Адрес / город'),
           field(notes, 'Примечания', lines: 4),
           const SizedBox(height: 4),
@@ -1165,7 +1151,6 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final car = widget.car;
-    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -1254,7 +1239,9 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                     if (car.sellerAddress.isNotEmpty)
                       Text('Адрес: ${car.sellerAddress}'),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         if (car.sellerPhone.isNotEmpty)
                           FilledButton.icon(
@@ -1262,9 +1249,6 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                             icon: const Icon(Icons.phone),
                             label: const Text('Позвонить'),
                           ),
-                        if (car.sellerPhone.isNotEmpty &&
-                            car.sellerAddress.isNotEmpty)
-                          const SizedBox(width: 8),
                         if (car.sellerAddress.isNotEmpty)
                           OutlinedButton.icon(
                             onPressed: _openAddress,
@@ -1696,6 +1680,7 @@ Future<void> showExpenseDialog({
     },
   );
 }
+
 Future<void> exportCsv(List<Car> cars) async {
   final buf = StringBuffer();
   buf.writeln(
