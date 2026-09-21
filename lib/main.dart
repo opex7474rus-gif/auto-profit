@@ -2,8 +2,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+final ValueNotifier<ThemeMode> themeNotifier =
+    ValueNotifier(ThemeMode.system);
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  themeNotifier.value = await Storage.loadTheme();
   runApp(const AutoProfitApp());
 }
 
@@ -12,16 +16,29 @@ class AutoProfitApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Авто Профит',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-        ),
-        useMaterial3: true,
-      ),
-      home: const HomeScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Авто Профит',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+            ),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.dark,
+            ),
+            useMaterial3: true,
+          ),
+          themeMode: mode,
+          home: const HomeScreen(),
+        );
+      },
     );
   }
 }
@@ -161,6 +178,31 @@ class Storage {
       jsonEncode(cars.map((c) => c.toJson()).toList()),
     );
   }
+
+  static const _themeKey = 'theme_mode_v1';
+
+  static Future<ThemeMode> loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_themeKey);
+    switch (raw) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static Future<void> saveTheme(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = mode == ThemeMode.light
+        ? 'light'
+        : mode == ThemeMode.dark
+            ? 'dark'
+            : 'system';
+    await prefs.setString(_themeKey, raw);
+  }
 }
 
 String newId() =>
@@ -243,6 +285,38 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  IconData _themeIcon(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return Icons.light_mode;
+      case ThemeMode.dark:
+        return Icons.dark_mode;
+      default:
+        return Icons.brightness_auto;
+    }
+  }
+
+  String _themeTooltip(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Светлая тема (нажмите для тёмной)';
+      case ThemeMode.dark:
+        return 'Тёмная тема (нажмите для авто)';
+      default:
+        return 'Как в системе (нажмите для светлой)';
+    }
+  }
+
+  void _cycleTheme(ThemeMode mode) {
+    final next = mode == ThemeMode.system
+        ? ThemeMode.light
+        : mode == ThemeMode.light
+            ? ThemeMode.dark
+            : ThemeMode.system;
+    themeNotifier.value = next;
+    Storage.saveTheme(next);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -254,6 +328,18 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Авто Профит'),
+        actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) {
+              return IconButton(
+                tooltip: _themeTooltip(mode),
+                onPressed: () => _cycleTheme(mode),
+                icon: Icon(_themeIcon(mode)),
+              );
+            },
+          ),
+        ],
       ),
       floatingActionButton:
           FloatingActionButton.extended(
@@ -642,6 +728,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
+
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
