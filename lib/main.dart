@@ -51,33 +51,33 @@ const int kTrashDays = 30;
 const double kMinMargin = 30000;
 
 const Map<String, List<String>> kCarCatalog = {
-  'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora', '2107', '2110', '2114', '2115'],
-  'Toyota': ['Camry', 'Corolla', 'RAV4', 'Land Cruiser', 'Highlander', 'Prius', 'Avensis'],
-  'Kia': ['Rio', 'Sportage', 'Optima', 'Ceed', 'Sorento', 'Soul', 'Cerato'],
-  'Hyundai': ['Solaris', 'Creta', 'Tucson', 'Santa Fe', 'Elantra', 'i30', 'ix35', 'Accent'],
-  'Volkswagen': ['Polo', 'Tiguan', 'Passat', 'Golf', 'Jetta', 'Touareg'],
-  'Renault': ['Logan', 'Duster', 'Sandero', 'Kaptur', 'Arkana', 'Megane'],
-  'Nissan': ['Qashqai', 'X-Trail', 'Juke', 'Almera', 'Teana', 'Murano', 'Note'],
-  'Ford': ['Focus', 'Mondeo', 'Kuga', 'Explorer', 'Fiesta', 'Transit'],
-  'Skoda': ['Octavia', 'Rapid', 'Superb', 'Kodiaq', 'Karoq', 'Fabia', 'Yeti'],
-  'BMW': ['3 серия', '5 серия', '7 серия', 'X1', 'X3', 'X5', 'X6'],
-  'Mercedes-Benz': ['C-класс', 'E-класс', 'S-класс', 'GLA', 'GLC', 'GLE', 'ML', 'Sprinter'],
-  'Audi': ['A3', 'A4', 'A6', 'A8', 'Q3', 'Q5', 'Q7'],
-  'Mazda': ['3', '6', 'CX-5', 'CX-9', 'CX-30'],
-  'Chevrolet': ['Cruze', 'Aveo', 'Lacetti', 'Niva', 'Captiva', 'Malibu', 'Spark'],
-  'Mitsubishi': ['Lancer', 'Outlander', 'ASX', 'Pajero', 'L200', 'Galant'],
-  'Opel': ['Astra', 'Corsa', 'Insignia', 'Zafira', 'Mokka', 'Antara'],
-  'Peugeot': ['308', '408', '3008', '4008', '5008', 'Partner'],
-  'Citroen': ['C4', 'C5', 'Berlingo', 'C3', 'C-Elysee'],
-  'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot', 'Fit', 'Jazz'],
-  'Suzuki': ['Vitara', 'SX4', 'Jimny', 'Grand Vitara', 'Swift'],
-  'Chery': ['Tiggo 4', 'Tiggo 7', 'Tiggo 8', 'Arrizo 5', 'Arrizo 8'],
-  'Haval': ['H6', 'H9', 'Jolion', 'F7', 'Dargo', 'H5'],
-  'Geely': ['Coolray', 'Atlas', 'Tugella', 'Monjaro', 'Emgrand'],
+  'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora'],
+  'Toyota': ['Camry', 'Corolla', 'RAV4', 'Land Cruiser', 'Highlander'],
+  'Kia': ['Rio', 'Sportage', 'Optima', 'Ceed', 'Sorento', 'Soul'],
+  'Hyundai': ['Solaris', 'Creta', 'Tucson', 'Santa Fe', 'Elantra'],
+  'Volkswagen': ['Polo', 'Tiguan', 'Passat', 'Golf', 'Jetta'],
+  'Renault': ['Logan', 'Duster', 'Sandero', 'Kaptur', 'Arkana'],
+  'Nissan': ['Qashqai', 'X-Trail', 'Juke', 'Almera', 'Murano'],
+  'Ford': ['Focus', 'Mondeo', 'Kuga', 'Explorer', 'Transit'],
+  'Skoda': ['Octavia', 'Rapid', 'Superb', 'Kodiaq', 'Fabia'],
+  'BMW': ['3 серия', '5 серия', '7 серия', 'X1', 'X3', 'X5'],
+  'Mercedes-Benz': ['C-класс', 'E-класс', 'GLA', 'GLC', 'GLE'],
+  'Audi': ['A3', 'A4', 'A6', 'Q3', 'Q5', 'Q7'],
+  'Mazda': ['3', '6', 'CX-5', 'CX-9'],
+  'Chevrolet': ['Cruze', 'Aveo', 'Lacetti', 'Niva', 'Captiva'],
+  'Mitsubishi': ['Lancer', 'Outlander', 'ASX', 'Pajero'],
+  'Opel': ['Astra', 'Corsa', 'Insignia', 'Mokka'],
+  'Peugeot': ['308', '408', '3008', '5008'],
+  'Citroen': ['C4', 'C5', 'Berlingo', 'C3'],
+  'Honda': ['Civic', 'Accord', 'CR-V', 'Pilot'],
+  'Suzuki': ['Vitara', 'SX4', 'Jimny', 'Swift'],
+  'Chery': ['Tiggo 4', 'Tiggo 7', 'Tiggo 8', 'Arrizo 5'],
+  'Haval': ['H6', 'H9', 'Jolion', 'F7', 'Dargo'],
+  'Geely': ['Coolray', 'Atlas', 'Tugella', 'Monjaro'],
   'Datsun': ['on-DO', 'mi-DO'],
   'Daewoo': ['Nexia', 'Matiz', 'Gentra'],
   'Ravon': ['Nexia R3', 'R2', 'R4'],
-  'УАЗ': ['Patriot', 'Hunter', 'Profi', '452'],
+  'УАЗ': ['Patriot', 'Hunter', 'Profi'],
   'ГАЗ': ['Газель', 'Соболь', 'Волга'],
 };
 
@@ -1173,7 +1173,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             _KpiCard(
               title: 'Прибыль за месяц',
               value: moneyShort(a.profitThisMonth),
-              subtitle: '${a.soldThisMonthCount} проданных за месяц',
+              subtitle: '${a.soldThisMonthCount} за месяц',
               icon: Icons.calendar_today,
               color:
                   a.profitThisMonth >= 0 ? Colors.green : Colors.red,
@@ -1181,7 +1181,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             _KpiCard(
               title: 'Прибыль всего',
               value: moneyShort(a.totalProfit),
-              subtitle: '${a.soldAllTimeCount} проданных за всё время',
+              subtitle: '${a.soldAllTimeCount} за всё время',
               icon: Icons.trending_up,
               color: a.totalProfit >= 0 ? Colors.green : Colors.red,
             ),
@@ -2980,7 +2980,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: salePrice,
-                    keyboardType: const TextInputType.numberWithOptions(
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
@@ -3539,7 +3540,8 @@ Future<void> showExpenseDialog({
                   const SizedBox(height: 10),
                   TextField(
                     controller: amount,
-                    keyboardType: const TextInputType.numberWithOptions(
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
@@ -3600,7 +3602,8 @@ Future<void> showExpenseDialog({
                   onChanged();
                   Navigator.pop(dialogContext);
                 },
-                child: Text(expense == null ? 'Добавить' : 'Сохранить'),
+                child:
+                    Text(expense == null ? 'Добавить' : 'Сохранить'),
               ),
             ],
           );
@@ -3609,7 +3612,7 @@ Future<void> showExpenseDialog({
     },
   );
 }
-   class TrashScreen extends StatefulWidget {
+                    class TrashScreen extends StatefulWidget {
   final void Function(Car) onRestore;
 
   const TrashScreen({super.key, required this.onRestore});
@@ -3730,7 +3733,8 @@ class _TrashScreenState extends State<TrashScreen> {
                             Text(
                               'Удалён: ${t.deletedAt}'
                               ' • осталось ${t.daysLeft} дн.',
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style:
+                                  Theme.of(context).textTheme.bodySmall,
                             ),
                             const SizedBox(height: 8),
                             Row(
@@ -3852,7 +3856,8 @@ class HistoryScreen extends StatelessWidget {
             ),
     );
   }
-}class _ContractDialog extends StatefulWidget {
+}
+                    class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
 
@@ -4039,7 +4044,7 @@ class _ContractDialogState extends State<_ContractDialog> {
     );
   }
 }
-   Future<void> saveContractHtml(
+                    Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -4050,7 +4055,8 @@ class _ContractDialogState extends State<_ContractDialog> {
   final month = DateFormat('MMMM', 'ru').format(now);
   final year = now.year;
   final priceNum = double.tryParse(price.replaceAll(',', '.')) ?? 0;
-  final priceRub = NumberFormat('#,##0').format(priceNum).replaceAll(',', ' ');
+  final priceRub =
+      NumberFormat('#,##0').format(priceNum).replaceAll(',', ' ');
   final priceWords = _numToRussianWords(priceNum.round());
 
   String row(String label, String value) =>
@@ -4165,7 +4171,7 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-   }
+                    }
                     String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
