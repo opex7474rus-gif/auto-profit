@@ -279,6 +279,16 @@ String money(double value) {
   return '${f.format(value).replaceAll(',', ' ')} ₽';
 }
 
+String moneyShort(double value) {
+  if (value.abs() >= 1000000) {
+    return '${(value / 1000000).toStringAsFixed(1)} млн ₽';
+  }
+  if (value.abs() >= 1000) {
+    return '${(value / 1000).toStringAsFixed(0)} тыс ₽';
+  }
+  return '${value.toStringAsFixed(0)} ₽';
+}
+
 String formatDate(DateTime d) => DateFormat('dd.MM.yyyy').format(d);
 
 String todayIso() {
@@ -287,6 +297,832 @@ String todayIso() {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
+class MonthStat {
+  final String label;
+  final double profit;
+  final int count;
+  MonthStat({
+    required this.label,
+    required this.profit,
+    required this.count,
+  });
+}
+
+class CategoryStat {
+  final String name;
+  final double amount;
+  CategoryStat({required this.name, required this.amount});
+}
+
+class Analytics {
+  final List<Car> cars;
+
+  Analytics(this.cars);
+
+  List<Car> get soldCars => cars.where((c) => c.isSold).toList();
+  List<Car> get stockCars => cars.where((c) => !c.isSold).toList();
+
+  // === ЗАКУП И РАСХОДЫ ===
+  double get totalPurchase =>
+      cars.fold(0, (s, c) => s + c.purchase);
+
+  double get totalPurchaseStock =>
+      stockCars.fold(0, (s, c) => s + c.purchase);
+
+  double get totalPurchaseSold =>
+      soldCars.fold(0, (s, c) => s + c.purchase);
+
+  double get totalExpenses =>
+      cars.fold(0, (s, c) => s + c.expensesTotal);
+
+  double get totalExpensesStock =>
+      stockCars.fold(0, (s, c) => s + c.expensesTotal);
+
+  double get totalExpensesSold =>
+      soldCars.fold(0, (s, c) => s + c.expensesTotal);
+
+  // === ИНВЕСТИЦИИ (закуп + расходы) ===
+  double get totalInvested => totalPurchase + totalExpenses;
+  double get totalInvestedStock =>
+      totalPurchaseStock + totalExpensesStock;
+  double get totalInvestedSold =>
+      totalPurchaseSold + totalExpensesSold;
+
+  // === ВЫРУЧКА И ПРИБЫЛЬ ===
+  double get totalRevenue =>
+      soldCars.fold(0, (s, c) => s + c.sale);
+
+  double get totalProfit =>
+      soldCars.fold(0, (s, c) => s + c.profit);
+
+  // === СРЕДНИЕ ===
+  double get averageProfit => soldCars.isEmpty
+      ? 0
+      : totalProfit / soldCars.length;
+
+  double get averagePurchase =>
+      cars.isEmpty ? 0 : totalPurchase / cars.length;
+
+  double get averageSalePrice => soldCars.isEmpty
+      ? 0
+      : totalRevenue / soldCars.length;
+
+  double get averageDaysToSell => soldCars.isEmpty
+      ? 0
+      : soldCars
+              .map((c) => c.daysInStock)
+              .reduce((a, b) => a + b) /
+          soldCars.length;
+
+  double get averageInvestment => cars.isEmpty
+      ? 0
+      : totalInvested / cars.length;
+
+  // === РЕНТАБЕЛЬНОСТЬ ===
+  double get profitability => totalInvestedSold == 0
+      ? 0
+      : (totalProfit / totalInvestedSold) * 100;
+
+  // === ЛУЧШАЯ И ХУДШАЯ ===
+  Car? get bestCar {
+    if (soldCars.isEmpty) return null;
+    return soldCars.reduce(
+      (a, b) => a.profit >= b.profit ? a : b,
+    );
+  }
+
+  Car? get worstCar {
+    if (soldCars.isEmpty) return null;
+    return soldCars.reduce(
+      (a, b) => a.profit <= b.profit ? a : b,
+    );
+  }
+
+  // === ТОП-5 РАСХОДОВ ПО КАТЕГОРИЯМ ===
+  List<CategoryStat> get topExpenseCategories {
+    final map = <String, double>{};
+    for (final c in cars) {
+      for (final e in c.expenses) {
+        map[e.category] = (map[e.category] ?? 0) + e.amount;
+      }
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted
+        .take(5)
+        .map((e) => CategoryStat(name: e.key, amount: e.value))
+        .toList();
+  }
+
+  // === ПРИБЫЛЬ ПО МЕСЯЦАМ (последние 6) ===
+  List<MonthStat> get monthlyStats {
+    final now = DateTime.now();
+    final months = <MonthStat>[];
+    for (int i = 5; i >= 0; i--) {
+      final start = DateTime(now.year, now.month - i, 1);
+      final end = DateTime(start.year, start.month + 1, 1);
+      final soldInMonth = soldCars.where((c) {
+        final d = c.saleDateTime;
+        if (d == null) return false;
+        return !d.isBefore(start) && d.isBefore(end);
+      }).toList();
+      final profit = soldInMonth.fold(0.0, (s, c) => s + c.profit);
+      months.add(MonthStat(
+        label: '${start.month.toString().padLeft(2, '0')}/'
+            '${(start.year % 100).toString().padLeft(2, '0')}',
+        profit: profit,
+        count: soldInMonth.length,
+      ));
+    }
+    return months;
+  }
+
+  // === ПРИБЫЛЬ ПО СТАТУСУ (сколько машин в каждом) ===
+  Map<String, int> get statusCounts {
+    final map = <String, int>{};
+    for (final s in kStatuses) {
+      map[s] = cars.where((c) => c.status == s).length;
+    }
+    return map;
+  }
+}
+class _KpiCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String? subtitle;
+  final IconData icon;
+  final Color color;
+
+  const _KpiCard({
+    required this.title,
+    required this.value,
+    this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 18, color: color),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                subtitle!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  final IconData icon;
+
+  const _SectionTitle({required this.text, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: valueColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpensesTopCard extends StatelessWidget {
+  final List<CategoryStat> stats;
+  final double totalExpenses;
+
+  const _ExpensesTopCard({
+    required this.stats,
+    required this.totalExpenses,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (stats.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Расходов ещё нет'),
+        ),
+      );
+    }
+    const palette = [
+      Colors.blue,
+      Colors.deepOrange,
+      Colors.purple,
+      Colors.teal,
+      Colors.amber,
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (int i = 0; i < stats.length; i++) ...[
+              Builder(builder: (context) {
+                final s = stats[i];
+                final pct = totalExpenses == 0
+                    ? 0.0
+                    : (s.amount / totalExpenses) * 100;
+                final color = palette[i % palette.length];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            s.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            '${money(s.amount)}  •  '
+                            '${pct.toStringAsFixed(0)}%',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: (pct / 100).clamp(0.0, 1.0),
+                          minHeight: 6,
+                          backgroundColor:
+                              color.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(color),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthlyChart extends StatelessWidget {
+  final List<MonthStat> stats;
+
+  const _MonthlyChart({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    if (stats.isEmpty) return const SizedBox.shrink();
+    final maxProfit = stats
+        .map((m) => m.profit.abs())
+        .fold<double>(0, (a, b) => a > b ? a : b);
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 130,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: stats.map((m) {
+                  final positive = m.profit >= 0;
+                  final value = maxProfit == 0
+                      ? 0.0
+                      : (m.profit.abs() / maxProfit);
+                  final barHeight = 10 + 90 * value;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            m.profit == 0
+                                ? '—'
+                                : moneyShort(m.profit),
+                            style: const TextStyle(fontSize: 10),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.clip,
+                          ),
+                          const SizedBox(height: 4),
+                          Container(
+                            height: barHeight,
+                            decoration: BoxDecoration(
+                              color: positive
+                                  ? Colors.green
+                                  : Colors.red,
+                              borderRadius:
+                                  BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            m.label,
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Прибыль по месяцам продаж (последние 6)',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BestWorstCard extends StatelessWidget {
+  final Car? best;
+  final Car? worst;
+
+  const _BestWorstCard({required this.best, required this.worst});
+
+  @override
+  Widget build(BuildContext context) {
+    if (best == null && worst == null) {
+      return const SizedBox.shrink();
+    }
+    return Row(
+      children: [
+        Expanded(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.emoji_events,
+                        color: Colors.green,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Лучшая',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  if (best != null) ...[
+                    Text(
+                      '${best!.make} ${best!.model}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      money(best!.profit),
+                      style: const TextStyle(
+                        color: Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ] else
+                    const Text('—'),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.trending_down,
+                        color: Colors.red,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Худшая',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  if (worst != null) ...[
+                    Text(
+                      '${worst!.make} ${worst!.model}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      money(worst!.profit),
+                      style: TextStyle(
+                        color: worst!.profit >= 0
+                            ? Colors.green
+                            : Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ] else
+                    const Text('—'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+class _AnalyticsSection extends StatefulWidget {
+  final Analytics analytics;
+
+  const _AnalyticsSection({required this.analytics});
+
+  @override
+  State<_AnalyticsSection> createState() => _AnalyticsSectionState();
+}
+
+class _AnalyticsSectionState extends State<_AnalyticsSection> {
+  bool expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.analytics;
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ===== KPI СЕТКА (всегда видна) =====
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.55,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          children: [
+            _KpiCard(
+              title: 'Вложено всего',
+              value: moneyShort(a.totalInvested),
+              subtitle: 'закуп + расходы',
+              icon: Icons.account_balance_wallet,
+              color: Colors.blue,
+            ),
+            _KpiCard(
+              title: 'Заработано',
+              value: moneyShort(a.totalRevenue),
+              subtitle: 'выручка от продаж',
+              icon: Icons.savings,
+              color: Colors.teal,
+            ),
+            _KpiCard(
+              title: 'Чистая прибыль',
+              value: moneyShort(a.totalProfit),
+              subtitle: a.soldCars.isEmpty
+                  ? 'нет проданных'
+                  : '${a.soldCars.length} проданных',
+              icon: Icons.trending_up,
+              color: a.totalProfit >= 0
+                  ? Colors.green
+                  : Colors.red,
+            ),
+            _KpiCard(
+              title: 'Средняя прибыль',
+              value: moneyShort(a.averageProfit),
+              subtitle: 'с одной машины',
+              icon: Icons.attach_money,
+              color: Colors.indigo,
+            ),
+            _KpiCard(
+              title: 'В наличии',
+              value: '${a.stockCars.length}',
+              subtitle: moneyShort(a.totalInvestedStock),
+              icon: Icons.directions_car,
+              color: Colors.orange,
+            ),
+            _KpiCard(
+              title: 'Проданных',
+              value: '${a.soldCars.length}',
+              subtitle: 'за всё время',
+              icon: Icons.check_circle,
+              color: Colors.green,
+            ),
+            _KpiCard(
+              title: 'Средний срок',
+              value: a.soldCars.isEmpty
+                  ? '—'
+                  : '${a.averageDaysToSell.toStringAsFixed(0)} дн.',
+              subtitle: 'от покупки до продажи',
+              icon: Icons.schedule,
+              color: Colors.deepPurple,
+            ),
+            _KpiCard(
+              title: 'Рентабельность',
+              value: a.soldCars.isEmpty
+                  ? '—'
+                  : '${a.profitability.toStringAsFixed(1)}%',
+              subtitle: 'прибыль / вложено',
+              icon: Icons.percent,
+              color: Colors.pink,
+            ),
+          ],
+        ),
+
+        // ===== КНОПКА РАЗВЕРНУТЬ =====
+        const SizedBox(height: 8),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => setState(() => expanded = !expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    expanded
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      expanded
+                          ? 'Свернуть подробную аналитику'
+                          : 'Развернуть подробную аналитику',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // ===== ПОДРОБНАЯ АНАЛИТИКА =====
+        if (expanded) ...[
+          const SizedBox(height: 8),
+
+          // --- Детализация ---
+          const _SectionTitle(
+            text: 'Детализация',
+            icon: Icons.receipt_long,
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  _DetailRow(
+                    label: 'Закупка всего',
+                    value: money(a.totalPurchase),
+                  ),
+                  _DetailRow(
+                    label: 'Расходы всего',
+                    value: money(a.totalExpenses),
+                  ),
+                  const Divider(),
+                  _DetailRow(
+                    label: 'Итого вложено',
+                    value: money(a.totalInvested),
+                    valueColor: Colors.blue,
+                  ),
+                  const SizedBox(height: 6),
+                  _DetailRow(
+                    label: 'Вложено в наличие',
+                    value: money(a.totalInvestedStock),
+                    valueColor: Colors.orange,
+                  ),
+                  _DetailRow(
+                    label: 'Вложено в проданные',
+                    value: money(a.totalInvestedSold),
+                  ),
+                  const Divider(),
+                  _DetailRow(
+                    label: 'Выручка от продаж',
+                    value: money(a.totalRevenue),
+                    valueColor: Colors.teal,
+                  ),
+                  _DetailRow(
+                    label: 'Чистая прибыль',
+                    value: money(a.totalProfit),
+                    valueColor: a.totalProfit >= 0
+                        ? Colors.green
+                        : Colors.red,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // --- Средние показатели ---
+          const _SectionTitle(
+            text: 'Средние показатели',
+            icon: Icons.analytics,
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  _DetailRow(
+                    label: 'Средняя цена закупки',
+                    value: money(a.averagePurchase),
+                  ),
+                  _DetailRow(
+                    label: 'Средняя цена продажи',
+                    value: money(a.averageSalePrice),
+                  ),
+                  _DetailRow(
+                    label: 'Средняя прибыль',
+                    value: money(a.averageProfit),
+                    valueColor: a.averageProfit >= 0
+                        ? Colors.green
+                        : Colors.red,
+                  ),
+                  _DetailRow(
+                    label: 'Средние вложения в машину',
+                    value: money(a.averageInvestment),
+                  ),
+                  _DetailRow(
+                    label: 'Средний срок продажи',
+                    value: a.soldCars.isEmpty
+                        ? '—'
+                        : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // --- Топ-5 расходов ---
+          const _SectionTitle(
+            text: 'Топ-5 расходов по категориям',
+            icon: Icons.local_gas_station,
+          ),
+          _ExpensesTopCard(
+            stats: a.topExpenseCategories,
+            totalExpenses: a.totalExpenses,
+          ),
+
+          // --- Прибыль по месяцам ---
+          const _SectionTitle(
+            text: 'Прибыль по месяцам',
+            icon: Icons.calendar_month,
+          ),
+          _MonthlyChart(stats: a.monthlyStats),
+
+          // --- Лучшая / худшая ---
+          const _SectionTitle(
+            text: 'Лучшая и худшая машина',
+            icon: Icons.emoji_events,
+          ),
+          _BestWorstCard(
+            best: a.bestCar,
+            worst: a.worstCar,
+          ),
+
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -294,25 +1130,21 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> {
   final List<Car> cars = [];
   bool loading = true;
-  late TabController tabController;
   final searchController = TextEditingController();
   String search = '';
+  String listMode = 'stock'; // 'stock' | 'sold'
 
   @override
   void initState() {
     super.initState();
-    tabController = TabController(length: 2, vsync: this);
-    tabController.addListener(() => setState(() {}));
     _load();
   }
 
   @override
   void dispose() {
-    tabController.dispose();
     searchController.dispose();
     super.dispose();
   }
@@ -332,9 +1164,7 @@ class _HomeScreenState extends State<HomeScreen>
     await Storage.save(cars);
   }
 
-  List<Car> get inStock => cars.where((c) => !c.isSold).toList();
-
-  List<Car> get sold => cars.where((c) => c.isSold).toList();
+  Analytics get analytics => Analytics(cars);
 
   List<Car> _filter(List<Car> src) {
     final q = search.trim().toLowerCase();
@@ -442,9 +1272,7 @@ class _HomeScreenState extends State<HomeScreen>
           .map((e) => Car.fromJson(e as Map<String, dynamic>))
           .toList();
       if (!mounted) return;
-      setState(() {
-        cars.addAll(imported);
-      });
+      setState(() => cars.addAll(imported));
       _persist();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -467,6 +1295,10 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     final theme = Theme.of(context);
+    final a = analytics;
+    final visible = _filter(
+      listMode == 'stock' ? a.stockCars : a.soldCars,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -514,104 +1346,208 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ],
-        bottom: TabBar(
-          controller: tabController,
-          tabs: [
-            Tab(text: 'В наличии (${inStock.length})'),
-            Tab(text: 'Проданные (${sold.length})'),
-          ],
-        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: addCar,
         icon: const Icon(Icons.add),
         label: const Text('Добавить'),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: TextField(
-              controller: searchController,
-              onChanged: (v) => setState(() => search = v),
-              decoration: InputDecoration(
-                hintText: 'Поиск: марка, VIN, госномер…',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: search.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () {
-                          searchController.clear();
-                          setState(() => search = '');
-                        },
-                      ),
-                border: const OutlineInputBorder(),
-                isDense: true,
+      body: CustomScrollView(
+        slivers: [
+          // === АНАЛИТИКА ===
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            sliver: SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionTitle(
+                    text: 'Аналитика',
+                    icon: Icons.insights,
+                  ),
+                  _AnalyticsSection(analytics: a),
+                  const SizedBox(height: 8),
+                ],
               ),
             ),
           ),
-          Expanded(
-            child: TabBarView(
-              controller: tabController,
-              children: [
-                _carList(_filter(inStock), theme, true),
-                _carList(_filter(sold), theme, false),
-              ],
+
+          // === ПОИСК ===
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            sliver: SliverToBoxAdapter(
+              child: TextField(
+                controller: searchController,
+                onChanged: (v) => setState(() => search = v),
+                decoration: InputDecoration(
+                  hintText: 'Поиск: марка, VIN, госномер…',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: search.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            searchController.clear();
+                            setState(() => search = '');
+                          },
+                        ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
             ),
           ),
+
+          // === ФИЛЬТР-ПЕРЕКЛЮЧАТЕЛЬ ===
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _ModeTab(
+                      label: 'В наличии',
+                      count: a.stockCars.length,
+                      selected: listMode == 'stock',
+                      onTap: () =>
+                          setState(() => listMode = 'stock'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _ModeTab(
+                      label: 'Проданные',
+                      count: a.soldCars.length,
+                      selected: listMode == 'sold',
+                      onTap: () =>
+                          setState(() => listMode = 'sold'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // === СКЛАД: ЗАГОЛОВОК ===
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                children: [
+                  Icon(
+                    listMode == 'stock'
+                        ? Icons.warehouse
+                        : Icons.inventory,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    listMode == 'stock'
+                        ? 'Автомобили в наличии'
+                        : 'Проданные автомобили',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // === СПИСОК МАШИН ===
+          if (visible.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        listMode == 'stock'
+                            ? Icons.directions_car_outlined
+                            : Icons.check_circle_outline,
+                        size: 64,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        search.isNotEmpty
+                            ? 'Ничего не найдено'
+                            : listMode == 'stock'
+                                ? 'Нет машин в наличии'
+                                : 'Нет проданных машин',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+              sliver: SliverList.builder(
+                itemCount: visible.length,
+                itemBuilder: (context, index) {
+                  final car = visible[index];
+                  return _CarListTile(
+                    car: car,
+                    onTap: () => openCar(car),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _carList(List<Car> list, ThemeData theme, bool isStock) {
-    if (list.isEmpty) {
-      return Center(
+class _ModeTab extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ModeTab({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: selected ? 2 : 0,
+      color: selected
+          ? theme.colorScheme.primaryContainer
+          : theme.colorScheme.surfaceContainerHighest,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isStock
-                    ? Icons.directions_car_outlined
-                    : Icons.check_circle_outline,
-                size: 64,
-                color: theme.colorScheme.primary,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Center(
+            child: Text(
+              '$label ($count)',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: selected
+                    ? theme.colorScheme.onPrimaryContainer
+                    : theme.colorScheme.onSurface,
               ),
-              const SizedBox(height: 16),
-              Text(
-                isStock
-                    ? 'Нет машин в наличии'
-                    : 'Нет проданных машин',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isStock
-                    ? 'Нажмите «Добавить», чтобы создать первую карточку.'
-                    : 'Машины появятся здесь, когда вы укажете цену продажи.',
-                textAlign: TextAlign.center,
-              ),
-            ],
+            ),
           ),
         ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
-      itemCount: list.length,
-      itemBuilder: (context, index) {
-        final car = list[index];
-        return _CarListTile(
-          car: car,
-          onTap: () => openCar(car),
-        );
-      },
+      ),
     );
   }
 }
@@ -626,6 +1562,16 @@ class _CarListTile extends StatelessWidget {
     final theme = Theme.of(context);
     final photos = car.photos;
     final days = car.daysInStock;
+
+    // Цвет статуса по свежести
+    Color daysColor = Colors.green;
+    if (car.isSold) {
+      daysColor = Colors.blueGrey;
+    } else if (days >= 60) {
+      daysColor = Colors.red;
+    } else if (days >= 30) {
+      daysColor = Colors.orange;
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -671,15 +1617,24 @@ class _CarListTile extends StatelessWidget {
                         ),
                       )
                     else ...[
-                      Text('Вложено: ${money(car.invested)}'),
+                      Text(
+                        'Вложено: ${money(car.invested)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          const Icon(Icons.schedule, size: 14),
+                          Icon(Icons.schedule,
+                              size: 14, color: daysColor),
                           const SizedBox(width: 4),
                           Text(
                             'На складе $days дн.',
-                            style: theme.textTheme.bodySmall,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: daysColor,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ],
                       ),
@@ -1005,7 +1960,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
   }
 
   Future<void> _call() async {
-    final phone = widget.car.sellerPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    final phone =
+        widget.car.sellerPhone.replaceAll(RegExp(r'[^\d+]'), '');
     if (phone.isEmpty) return;
     final uri = Uri(scheme: 'tel', path: phone);
     if (await canLaunchUrl(uri)) {
@@ -1202,10 +2158,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                         ? ''
                         : formatDate(car.purchaseDateTime!),
                   ),
-                  _infoRow(
-                    'На складе',
-                    '${car.daysInStock} дн.',
-                  ),
+                  _infoRow('На складе', '${car.daysInStock} дн.'),
                   if (car.saleDate.isNotEmpty)
                     _infoRow(
                       'Дата продажи',
@@ -1287,10 +2240,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          _ExpensesBlock(
-            car: car,
-            onChanged: widget.onChanged,
-          ),
+          _ExpensesBlock(car: car, onChanged: widget.onChanged),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -1388,15 +2338,11 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
         children: [
           Text(
             title,
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : null,
-            ),
+            style: TextStyle(fontWeight: bold ? FontWeight.bold : null),
           ),
           Text(
             money(value),
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : null,
-            ),
+            style: TextStyle(fontWeight: bold ? FontWeight.bold : null),
           ),
         ],
       ),
