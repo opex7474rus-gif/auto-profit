@@ -1,9 +1,37 @@
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
+
+const List<String> kStatuses = [
+  'Куплен',
+  'В ремонте',
+  'Готов к продаже',
+  'На продаже',
+  'Продан',
+];
+
+const List<String> kExpenseCategories = [
+  'Запчасти',
+  'Работа / ремонт',
+  'Мойка / химчистка',
+  'Страховка',
+  'Топливо',
+  'Оформление / ГИБДД',
+  'Комиссия',
+  'Прочее',
+];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +70,6 @@ class AutoProfitApp extends StatelessWidget {
     );
   }
 }
-
 class Car {
   String id;
   String make;
@@ -52,11 +79,16 @@ class Car {
   String plate;
   String mileage;
   String purchasePrice;
+  String purchaseDate;
   String status;
   String seller;
+  String sellerPhone;
+  String sellerAddress;
   String notes;
   String salePrice;
+  String saleDate;
   List<Expense> expenses;
+  List<String> photos;
 
   Car({
     required this.id,
@@ -67,11 +99,16 @@ class Car {
     required this.plate,
     required this.mileage,
     required this.purchasePrice,
+    required this.purchaseDate,
     required this.status,
     required this.seller,
+    required this.sellerPhone,
+    required this.sellerAddress,
     required this.notes,
     required this.salePrice,
+    required this.saleDate,
     required this.expenses,
+    required this.photos,
   });
 
   factory Car.fromJson(Map<String, dynamic> json) {
@@ -84,12 +121,19 @@ class Car {
       plate: (json['plate'] ?? '') as String,
       mileage: (json['mileage'] ?? '') as String,
       purchasePrice: (json['purchasePrice'] ?? '') as String,
+      purchaseDate: (json['purchaseDate'] ?? '') as String,
       status: (json['status'] ?? 'Куплен') as String,
       seller: (json['seller'] ?? '') as String,
+      sellerPhone: (json['sellerPhone'] ?? '') as String,
+      sellerAddress: (json['sellerAddress'] ?? '') as String,
       notes: (json['notes'] ?? '') as String,
       salePrice: (json['salePrice'] ?? '') as String,
+      saleDate: (json['saleDate'] ?? '') as String,
       expenses: ((json['expenses'] ?? []) as List)
           .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      photos: ((json['photos'] ?? []) as List)
+          .map((e) => e.toString())
           .toList(),
     );
   }
@@ -103,11 +147,16 @@ class Car {
         'plate': plate,
         'mileage': mileage,
         'purchasePrice': purchasePrice,
+        'purchaseDate': purchaseDate,
         'status': status,
         'seller': seller,
+        'sellerPhone': sellerPhone,
+        'sellerAddress': sellerAddress,
         'notes': notes,
         'salePrice': salePrice,
+        'saleDate': saleDate,
         'expenses': expenses.map((e) => e.toJson()).toList(),
+        'photos': photos,
       };
 
   double get purchase =>
@@ -122,6 +171,25 @@ class Car {
   double get invested => purchase + expensesTotal;
 
   double get profit => sale - invested;
+
+  bool get isSold => sale > 0;
+
+  DateTime? get purchaseDateTime {
+    if (purchaseDate.isEmpty) return null;
+    return DateTime.tryParse(purchaseDate);
+  }
+
+  DateTime? get saleDateTime {
+    if (saleDate.isEmpty) return null;
+    return DateTime.tryParse(saleDate);
+  }
+
+  int get daysInStock {
+    final start = purchaseDateTime;
+    if (start == null) return 0;
+    final end = saleDateTime ?? DateTime.now();
+    return end.difference(start).inDays;
+  }
 }
 
 class Expense {
@@ -140,7 +208,7 @@ class Expense {
   factory Expense.fromJson(Map<String, dynamic> json) {
     return Expense(
       id: (json['id'] ?? '') as String,
-      category: (json['category'] ?? '') as String,
+      category: (json['category'] ?? 'Прочее') as String,
       amount: ((json['amount'] ?? 0) as num).toDouble(),
       note: (json['note'] ?? '') as String,
     );
@@ -156,6 +224,7 @@ class Expense {
 
 class Storage {
   static const _key = 'cars_v1';
+  static const _themeKey = 'theme_mode_v1';
 
   static Future<List<Car>> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -178,8 +247,6 @@ class Storage {
       jsonEncode(cars.map((c) => c.toJson()).toList()),
     );
   }
-
-  static const _themeKey = 'theme_mode_v1';
 
   static Future<ThemeMode> loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
@@ -205,8 +272,21 @@ class Storage {
   }
 }
 
-String newId() =>
-    DateTime.now().microsecondsSinceEpoch.toString();
+String newId() => DateTime.now().microsecondsSinceEpoch.toString();
+
+String money(double value) {
+  final f = NumberFormat('#,##0', 'ru_RU');
+  return '${f.format(value).replaceAll(',', ' ')} ₽';
+}
+
+String formatDate(DateTime d) => DateFormat('dd.MM.yyyy').format(d);
+
+String todayIso() {
+  final d = DateTime.now();
+  return '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -214,14 +294,27 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   final List<Car> cars = [];
   bool loading = true;
+  late TabController tabController;
+  final searchController = TextEditingController();
+  String search = '';
 
   @override
   void initState() {
     super.initState();
+    tabController = TabController(length: 2, vsync: this);
+    tabController.addListener(() => setState(() {}));
     _load();
+  }
+
+  @override
+  void dispose() {
+    tabController.dispose();
+    searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -239,14 +332,21 @@ class _HomeScreenState extends State<HomeScreen> {
     await Storage.save(cars);
   }
 
-  double get totalInvested =>
-      cars.fold(0, (sum, car) => sum + car.invested);
+  List<Car> get inStock => cars.where((c) => !c.isSold).toList();
 
-  double get totalProfit =>
-      cars.fold(0, (sum, car) => sum + car.profit);
+  List<Car> get sold => cars.where((c) => c.isSold).toList();
 
-  int countStatus(String status) =>
-      cars.where((car) => car.status == status).length;
+  List<Car> _filter(List<Car> src) {
+    final q = search.trim().toLowerCase();
+    if (q.isEmpty) return src;
+    return src.where((c) {
+      return c.make.toLowerCase().contains(q) ||
+          c.model.toLowerCase().contains(q) ||
+          c.vin.toLowerCase().contains(q) ||
+          c.plate.toLowerCase().contains(q) ||
+          c.seller.toLowerCase().contains(q);
+    }).toList();
+  }
 
   void addCar() {
     Navigator.push(
@@ -273,7 +373,13 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {});
             _persist();
           },
-          onDelete: () {
+          onDelete: () async {
+            for (final path in car.photos) {
+              try {
+                final f = File(path);
+                if (await f.exists()) await f.delete();
+              } catch (_) {}
+            }
             if (!mounted) return;
             setState(() {
               cars.removeWhere((c) => c.id == car.id);
@@ -296,17 +402,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String _themeTooltip(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return 'Светлая тема (нажмите для тёмной)';
-      case ThemeMode.dark:
-        return 'Тёмная тема (нажмите для авто)';
-      default:
-        return 'Как в системе (нажмите для светлой)';
-    }
-  }
-
   void _cycleTheme(ThemeMode mode) {
     final next = mode == ThemeMode.system
         ? ThemeMode.light
@@ -317,6 +412,73 @@ class _HomeScreenState extends State<HomeScreen> {
     Storage.saveTheme(next);
   }
 
+  Future<void> exportJson() async {
+    try {
+      final data = jsonEncode(cars.map((c) => c.toJson()).toList());
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/auto_profit_backup.json');
+      await file.writeAsString(data);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Резервная копия Авто Профит',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка экспорта: $e')),
+      );
+    }
+  }
+
+  Future<void> importJson() async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      final content = await File(path).readAsString();
+      final list = jsonDecode(content) as List;
+      final imported = list
+          .map((e) => Car.fromJson(e as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Импорт данных'),
+          content: Text(
+            'Найдено ${imported.length} авто.\n\n'
+            'Заменить текущие данные или добавить к ним?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Добавить'),
+            ),
+          ],
+        ),
+      );
+      if (ok == null) return;
+      setState(() {
+        cars.addAll(imported);
+      });
+      _persist();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Импортировано ${imported.length} авто')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка импорта: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -325,205 +487,264 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Авто Профит'),
         actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'export') exportJson();
+              if (value == 'import') importJson();
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.upload_file),
+                  title: Text('Экспорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.download),
+                  title: Text('Импорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
           ValueListenableBuilder<ThemeMode>(
             valueListenable: themeNotifier,
-            builder: (context, mode, _) {
-              return IconButton(
-                tooltip: _themeTooltip(mode),
-                onPressed: () => _cycleTheme(mode),
-                icon: Icon(_themeIcon(mode)),
-              );
-            },
+            builder: (context, mode, _) => IconButton(
+              tooltip: 'Тема',
+              onPressed: () => _cycleTheme(mode),
+              icon: Icon(_themeIcon(mode)),
+            ),
           ),
         ],
+        bottom: TabBar(
+          controller: tabController,
+          tabs: [
+            Tab(text: 'В наличии (${inStock.length})'),
+            Tab(text: 'Проданные (${sold.length})'),
+          ],
+        ),
       ),
-      floatingActionButton:
-          FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: addCar,
         icon: const Icon(Icons.add),
-        label: const Text('Добавить авто'),
+        label: const Text('Добавить'),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Column(
         children: [
-          const Text(
-            'Панель управления',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  title: 'Автомобили',
-                  value: '${cars.length}',
-                  icon: Icons.directions_car,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  title: 'На продаже',
-                  value: '${countStatus('На продаже')}',
-                  icon: Icons.sell,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: StatCard(
-                  title: 'Вложено',
-                  value: money(totalInvested),
-                  icon: Icons.account_balance_wallet,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: StatCard(
-                  title: 'Прибыль',
-                  value: money(totalProfit),
-                  icon: Icons.trending_up,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Статусы',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  statusRow('Куплен', countStatus('Куплен')),
-                  statusRow('В ремонте', countStatus('В ремонте')),
-                  statusRow('Готов к продаже',
-                      countStatus('Готов к продаже')),
-                  statusRow('На продаже', countStatus('На продаже')),
-                  statusRow('Продан', countStatus('Продан')),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          if (cars.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.directions_car_outlined,
-                      size: 56,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Автомобилей пока нет',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: TextField(
+              controller: searchController,
+              onChanged: (v) => setState(() => search = v),
+              decoration: InputDecoration(
+                hintText: 'Поиск: марка, VIN, госномер…',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: search.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() => search = '');
+                        },
                       ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Нажмите «Добавить авто», чтобы создать первую карточку.',
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            ...cars.map(
-              (car) => Card(
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.directions_car),
-                  ),
-                  title: Text('${car.make} ${car.model}'),
-                  subtitle: Text(
-                    '${car.year} • ${car.status}\n'
-                    'Вложено: ${money(car.invested)}',
-                  ),
-                  isThreeLine: true,
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => openCar(car),
-                ),
+                border: const OutlineInputBorder(),
+                isDense: true,
               ),
             ),
-          const SizedBox(height: 100),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: tabController,
+              children: [
+                _carList(_filter(inStock), theme, true),
+                _carList(_filter(sold), theme, false),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget statusRow(String title, int count) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title),
-          Text(
-            '$count',
-            style: const TextStyle(fontWeight: FontWeight.bold),
+  Widget _carList(List<Car> list, ThemeData theme, bool isStock) {
+    if (list.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isStock
+                    ? Icons.directions_car_outlined
+                    : Icons.check_circle_outline,
+                size: 64,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isStock
+                    ? 'Нет машин в наличии'
+                    : 'Нет проданных машин',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isStock
+                    ? 'Нажмите «Добавить», чтобы создать первую карточку.'
+                    : 'Машины появятся здесь, когда вы укажете цену продажи.',
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-        ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+      itemCount: list.length,
+      itemBuilder: (context, index) {
+        final car = list[index];
+        return _CarListTile(
+          car: car,
+          onTap: () => openCar(car),
+        );
+      },
+    );
+  }
+}
+
+class _CarListTile extends StatelessWidget {
+  final Car car;
+  final VoidCallback onTap;
+
+  const _CarListTile({required this.car, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final photos = car.photos;
+    final days = car.daysInStock;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PhotoThumb(path: photos.isNotEmpty ? photos.first : null),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${car.make} ${car.model}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        if (car.year.isNotEmpty) car.year,
+                        if (car.plate.isNotEmpty) car.plate,
+                        car.status,
+                      ].join(' • '),
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 6),
+                    if (car.isSold)
+                      Text(
+                        'Прибыль: ${money(car.profit)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: car.profit >= 0
+                              ? Colors.green
+                              : Colors.red,
+                        ),
+                      )
+                    else ...[
+                      Text('Вложено: ${money(car.invested)}'),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          const Icon(Icons.schedule, size: 14),
+                          const SizedBox(width: 4),
+                          Text(
+                            'На складе $days дн.',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
+class _PhotoThumb extends StatelessWidget {
+  final String? path;
 
-  const StatCard({
-    super.key,
-    required this.title,
-    required this.value,
-    required this.icon,
-  });
+  const _PhotoThumb({required this.path});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon),
-            const SizedBox(height: 8),
-            Text(title),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
+    final theme = Theme.of(context);
+    const size = 72.0;
+    if (path == null || path!.isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
         ),
+        child: Icon(
+          Icons.directions_car,
+          size: 36,
+          color: theme.colorScheme.primary,
+        ),
+      );
+    }
+    final file = File(path!);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: file.existsSync()
+            ? Image.file(file, fit: BoxFit.cover)
+            : Container(
+                color: theme.colorScheme.surfaceContainerHighest,
+                child: const Icon(Icons.broken_image),
+              ),
       ),
     );
   }
@@ -551,9 +772,12 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final mileage = TextEditingController();
   final purchase = TextEditingController();
   final seller = TextEditingController();
+  final sellerPhone = TextEditingController();
+  final sellerAddress = TextEditingController();
   final notes = TextEditingController();
 
   String status = 'Куплен';
+  DateTime? purchaseDate;
 
   bool get isEdit => widget.car != null;
 
@@ -570,8 +794,13 @@ class _CarFormScreenState extends State<CarFormScreen> {
       mileage.text = c.mileage;
       purchase.text = c.purchasePrice;
       seller.text = c.seller;
+      sellerPhone.text = c.sellerPhone;
+      sellerAddress.text = c.sellerAddress;
       notes.text = c.notes;
       status = c.status;
+      purchaseDate = c.purchaseDateTime;
+    } else {
+      purchaseDate = DateTime.now();
     }
   }
 
@@ -585,20 +814,38 @@ class _CarFormScreenState extends State<CarFormScreen> {
     mileage.dispose();
     purchase.dispose();
     seller.dispose();
+    sellerPhone.dispose();
+    sellerAddress.dispose();
     notes.dispose();
     super.dispose();
+  }
+
+  Future<void> pickPurchaseDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: purchaseDate ?? now,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked != null) {
+      setState(() => purchaseDate = picked);
+    }
   }
 
   void save() {
     if (make.text.trim().isEmpty ||
         model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Введите марку и модель'),
-        ),
+        const SnackBar(content: Text('Введите марку и модель')),
       );
       return;
     }
+    final iso = purchaseDate == null
+        ? ''
+        : '${purchaseDate!.year.toString().padLeft(4, '0')}-'
+            '${purchaseDate!.month.toString().padLeft(2, '0')}-'
+            '${purchaseDate!.day.toString().padLeft(2, '0')}';
 
     if (isEdit) {
       final c = widget.car!;
@@ -609,8 +856,11 @@ class _CarFormScreenState extends State<CarFormScreen> {
       c.plate = plate.text.trim();
       c.mileage = mileage.text.trim();
       c.purchasePrice = purchase.text.trim();
+      c.purchaseDate = iso;
       c.status = status;
       c.seller = seller.text.trim();
+      c.sellerPhone = sellerPhone.text.trim();
+      c.sellerAddress = sellerAddress.text.trim();
       c.notes = notes.text.trim();
       widget.onSave(c);
     } else {
@@ -624,15 +874,19 @@ class _CarFormScreenState extends State<CarFormScreen> {
           plate: plate.text.trim(),
           mileage: mileage.text.trim(),
           purchasePrice: purchase.text.trim(),
+          purchaseDate: iso,
           status: status,
           seller: seller.text.trim(),
+          sellerPhone: sellerPhone.text.trim(),
+          sellerAddress: sellerAddress.text.trim(),
           notes: notes.text.trim(),
           salePrice: '',
+          saleDate: '',
           expenses: [],
+          photos: [],
         ),
       );
     }
-
     Navigator.pop(context);
   }
 
@@ -654,7 +908,28 @@ class _CarFormScreenState extends State<CarFormScreen> {
           field(plate, 'Госномер'),
           field(mileage, 'Пробег'),
           field(purchase, 'Цена покупки', number: true),
-          field(seller, 'Продавец'),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: InkWell(
+              onTap: pickPurchaseDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Дата покупки',
+                  border: OutlineInputBorder(),
+                  suffixIcon: Icon(Icons.calendar_today),
+                ),
+                child: Text(
+                  purchaseDate == null
+                      ? 'Не указана'
+                      : formatDate(purchaseDate!),
+                ),
+              ),
+            ),
+          ),
+          field(seller, 'Продавец (имя)'),
+          field(sellerPhone, 'Телефон продавца',
+              number: true),
+          field(sellerAddress, 'Адрес / город'),
           field(notes, 'Примечания', lines: 4),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
@@ -663,32 +938,16 @@ class _CarFormScreenState extends State<CarFormScreen> {
               labelText: 'Статус',
               border: OutlineInputBorder(),
             ),
-            items: const [
-              DropdownMenuItem(
-                value: 'Куплен',
-                child: Text('Куплен'),
-              ),
-              DropdownMenuItem(
-                value: 'В ремонте',
-                child: Text('В ремонте'),
-              ),
-              DropdownMenuItem(
-                value: 'Готов к продаже',
-                child: Text('Готов к продаже'),
-              ),
-              DropdownMenuItem(
-                value: 'На продаже',
-                child: Text('На продаже'),
-              ),
-              DropdownMenuItem(
-                value: 'Продан',
-                child: Text('Продан'),
-              ),
-            ],
+            items: kStatuses
+                .map(
+                  (s) => DropdownMenuItem(
+                    value: s,
+                    child: Text(s),
+                  ),
+                )
+                .toList(),
             onChanged: (value) {
-              if (value != null) {
-                setState(() => status = value);
-              }
+              if (value != null) setState(() => status = value);
             },
           ),
           const SizedBox(height: 16),
@@ -696,9 +955,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
             onPressed: save,
             icon: const Icon(Icons.save),
             label: Text(
-              isEdit
-                  ? 'Сохранить изменения'
-                  : 'Сохранить автомобиль',
+              isEdit ? 'Сохранить изменения' : 'Сохранить автомобиль',
             ),
           ),
         ],
@@ -728,7 +985,6 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
@@ -747,11 +1003,13 @@ class CarDetailsScreen extends StatefulWidget {
 
 class _CarDetailsScreenState extends State<CarDetailsScreen> {
   final salePrice = TextEditingController();
+  DateTime? saleDate;
 
   @override
   void initState() {
     super.initState();
     salePrice.text = widget.car.salePrice;
+    saleDate = widget.car.saleDateTime;
   }
 
   @override
@@ -760,14 +1018,106 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     super.dispose();
   }
 
-  void saveSalePrice() {
+  Future<void> _call() async {
+    final phone = widget.car.sellerPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (phone.isEmpty) return;
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    }
+  }
+
+  Future<void> _openAddress() async {
+    final addr = widget.car.sellerAddress;
+    if (addr.isEmpty) return;
+    final uri = Uri.parse(
+      'https://yandex.ru/maps/?text=${Uri.encodeComponent(addr)}',
+    );
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> addPhoto() async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Из галереи'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Сделать фото'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1600,
+    );
+    if (picked == null) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final photosDir = Directory(p.join(dir.path, 'photos'));
+    if (!await photosDir.exists()) await photosDir.create(recursive: true);
+    final newPath = p.join(
+      photosDir.path,
+      'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await File(picked.path).copy(newPath);
+    setState(() {
+      widget.car.photos.add(newPath);
+    });
+    widget.onChanged();
+  }
+
+  Future<void> removePhoto(int index) async {
+    final path = widget.car.photos[index];
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    setState(() {
+      widget.car.photos.removeAt(index);
+    });
+    widget.onChanged();
+  }
+
+  void saveSale() {
     setState(() {
       widget.car.salePrice = salePrice.text.trim();
+      widget.car.saleDate = saleDate == null
+          ? todayIso()
+          : '${saleDate!.year.toString().padLeft(4, '0')}-'
+              '${saleDate!.month.toString().padLeft(2, '0')}-'
+              '${saleDate!.day.toString().padLeft(2, '0')}';
+      if (widget.car.sale > 0) widget.car.status = 'Продан';
     });
     widget.onChanged();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Цена продажи сохранена')),
+      const SnackBar(content: Text('Сохранено')),
     );
+  }
+
+  Future<void> pickSaleDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: saleDate ?? now,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked != null) setState(() => saleDate = picked);
   }
 
   void editCar() {
@@ -791,7 +1141,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Удалить автомобиль?'),
         content: const Text(
-          'Автомобиль и все его расходы будут удалены. Действие нельзя отменить.',
+          'Автомобиль, его расходы и фотографии будут удалены. Действие нельзя отменить.',
         ),
         actions: [
           TextButton(
@@ -799,9 +1149,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             child: const Text('Отмена'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(ctx);
               widget.onDelete();
@@ -814,123 +1162,10 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
-  void showExpenseDialog({Expense? expense}) {
-    final category = TextEditingController(
-      text: expense?.category ?? '',
-    );
-    final amount = TextEditingController(
-      text: expense != null
-          ? expense.amount.toStringAsFixed(0)
-          : '',
-    );
-    final note = TextEditingController(
-      text: expense?.note ?? '',
-    );
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(
-            expense == null
-                ? 'Добавить расход'
-                : 'Изменить расход',
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: category,
-                  decoration: const InputDecoration(
-                    labelText: 'Категория',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: amount,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Сумма',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: note,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Комментарий',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            if (expense != null)
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    widget.car.expenses.removeWhere(
-                      (e) => e.id == expense.id,
-                    );
-                  });
-                  widget.onChanged();
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text(
-                  'Удалить',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = double.tryParse(
-                      amount.text.replaceAll(',', '.'),
-                    ) ??
-                    0;
-                if (category.text.trim().isEmpty || value <= 0) {
-                  return;
-                }
-                setState(() {
-                  if (expense == null) {
-                    widget.car.expenses.add(
-                      Expense(
-                        id: newId(),
-                        category: category.text.trim(),
-                        amount: value,
-                        note: note.text.trim(),
-                      ),
-                    );
-                  } else {
-                    expense.category = category.text.trim();
-                    expense.amount = value;
-                    expense.note = note.text.trim();
-                  }
-                });
-                widget.onChanged();
-                Navigator.pop(dialogContext);
-              },
-              child: Text(expense == null ? 'Добавить' : 'Сохранить'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final car = widget.car;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -951,6 +1186,12 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _PhotosBlock(
+            car: car,
+            onAdd: addPhoto,
+            onRemove: removePhoto,
+          ),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -960,21 +1201,82 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   Text(
                     '${car.make} ${car.model}',
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 10),
-                  Text('Год: ${car.year}'),
-                  Text('VIN: ${car.vin}'),
-                  Text('Госномер: ${car.plate}'),
-                  Text('Пробег: ${car.mileage}'),
-                  Text('Продавец: ${car.seller}'),
-                  Text('Статус: ${car.status}'),
+                  _infoRow('Год', car.year),
+                  _infoRow('VIN', car.vin),
+                  _infoRow('Госномер', car.plate),
+                  _infoRow('Пробег', car.mileage),
+                  _infoRow('Статус', car.status),
+                  _infoRow(
+                    'Дата покупки',
+                    car.purchaseDate.isEmpty
+                        ? ''
+                        : formatDate(car.purchaseDateTime!),
+                  ),
+                  _infoRow(
+                    'На складе',
+                    '${car.daysInStock} дн.',
+                  ),
+                  if (car.saleDate.isNotEmpty)
+                    _infoRow(
+                      'Дата продажи',
+                      formatDate(car.saleDateTime!),
+                    ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          if (car.seller.isNotEmpty ||
+              car.sellerPhone.isNotEmpty ||
+              car.sellerAddress.isNotEmpty)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Продавец',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (car.seller.isNotEmpty) Text(car.seller),
+                    if (car.sellerPhone.isNotEmpty)
+                      Text('Тел: ${car.sellerPhone}'),
+                    if (car.sellerAddress.isNotEmpty)
+                      Text('Адрес: ${car.sellerAddress}'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (car.sellerPhone.isNotEmpty)
+                          FilledButton.icon(
+                            onPressed: _call,
+                            icon: const Icon(Icons.phone),
+                            label: const Text('Позвонить'),
+                          ),
+                        if (car.sellerPhone.isNotEmpty &&
+                            car.sellerAddress.isNotEmpty)
+                          const SizedBox(width: 8),
+                        if (car.sellerAddress.isNotEmpty)
+                          OutlinedButton.icon(
+                            onPressed: _openAddress,
+                            icon: const Icon(Icons.map),
+                            label: const Text('Карта'),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -1001,6 +1303,11 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          _ExpensesBlock(
+            car: car,
+            onChanged: widget.onChanged,
+          ),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -1008,7 +1315,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Цена продажи',
+                    'Продажа',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -1018,68 +1325,33 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   TextField(
                     controller: salePrice,
                     keyboardType:
-                        const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Цена продажи',
                       border: OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 10),
-                  FilledButton(
-                    onPressed: saveSalePrice,
-                    child: const Text('Сохранить'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Расходы',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  InkWell(
+                    onTap: pickSaleDate,
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Дата продажи',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.calendar_today),
                       ),
-                      IconButton(
-                        onPressed: () => showExpenseDialog(),
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
-                  ),
-                  if (car.expenses.isEmpty)
-                    const Text('Расходов пока нет')
-                  else
-                    ...car.expenses.map(
-                      (expense) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(expense.category),
-                        subtitle: Text(
-                          expense.note.isEmpty
-                              ? 'Нажмите, чтобы изменить'
-                              : expense.note,
-                        ),
-                        trailing: Text(
-                          money(expense.amount),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        onTap: () =>
-                            showExpenseDialog(expense: expense),
+                      child: Text(
+                        saleDate == null
+                            ? 'Не указана'
+                            : formatDate(saleDate!),
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton(
+                    onPressed: saveSale,
+                    child: const Text('Сохранить продажу'),
+                  ),
                 ],
               ),
             ),
@@ -1112,6 +1384,14 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 
+  Widget _infoRow(String title, String value) {
+    if (value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text('$title: $value'),
+    );
+  }
+
   Widget financeRow(
     String title,
     double value, {
@@ -1139,7 +1419,312 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 }
+class _PhotosBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onAdd;
+  final void Function(int index) onRemove;
 
-String money(double value) {
-  return '${value.toStringAsFixed(0)} ₽';
+  const _PhotosBlock({
+    required this.car,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Фотографии',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.add_a_photo),
+                ),
+              ],
+            ),
+            if (car.photos.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('Фото пока нет'),
+              )
+            else
+              SizedBox(
+                height: 110,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: car.photos.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final file = File(car.photos[index]);
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: SizedBox(
+                            width: 110,
+                            height: 110,
+                            child: file.existsSync()
+                                ? Image.file(file, fit: BoxFit.cover)
+                                : Container(
+                                    color: Colors.black12,
+                                    child: const Icon(Icons.broken_image),
+                                  ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: InkWell(
+                            onTap: () => onRemove(index),
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(4),
+                              child: const Icon(
+                                Icons.close,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpensesBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _ExpensesBlock({required this.car, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Расходы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    onChanged: onChanged,
+                  ),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.expenses.isEmpty)
+              const Text('Расходов пока нет')
+            else
+              ...car.expenses.map(
+                (expense) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt_long),
+                  title: Text(expense.category),
+                  subtitle: Text(
+                    expense.note.isEmpty
+                        ? 'Нажмите, чтобы изменить'
+                        : expense.note,
+                  ),
+                  trailing: Text(
+                    money(expense.amount),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    expense: expense,
+                    onChanged: onChanged,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showExpenseDialog({
+  required BuildContext context,
+  required Car car,
+  Expense? expense,
+  required VoidCallback onChanged,
+}) async {
+  final amount = TextEditingController(
+    text: expense != null ? expense.amount.toStringAsFixed(0) : '',
+  );
+  final note = TextEditingController(text: expense?.note ?? '');
+  String category = expense?.category ?? kExpenseCategories.first;
+
+  await showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return StatefulBuilder(
+        builder: (context, setLocal) {
+          return AlertDialog(
+            title: Text(
+              expense == null ? 'Добавить расход' : 'Изменить расход',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: const InputDecoration(
+                      labelText: 'Категория',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: kExpenseCategories
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(c),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setLocal(() => category = v);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amount,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Сумма',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: note,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Комментарий',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (expense != null)
+                TextButton(
+                  onPressed: () {
+                    car.expenses.removeWhere((e) => e.id == expense.id);
+                    onChanged();
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text(
+                    'Удалить',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = double.tryParse(
+                        amount.text.replaceAll(',', '.'),
+                      ) ??
+                      0;
+                  if (value <= 0) return;
+                  if (expense == null) {
+                    car.expenses.add(
+                      Expense(
+                        id: newId(),
+                        category: category,
+                        amount: value,
+                        note: note.text.trim(),
+                      ),
+                    );
+                  } else {
+                    expense.category = category;
+                    expense.amount = value;
+                    expense.note = note.text.trim();
+                  }
+                  onChanged();
+                  Navigator.pop(dialogContext);
+                },
+                child: Text(expense == null ? 'Добавить' : 'Сохранить'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+Future<void> exportCsv(List<Car> cars) async {
+  final buf = StringBuffer();
+  buf.writeln(
+    'Марка;Модель;Год;VIN;Госномер;Статус;Дата покупки;Дней на складе;'
+    'Цена покупки;Расходы;Всего вложено;Цена продажи;Дата продажи;Прибыль',
+  );
+  for (final c in cars) {
+    buf.writeln([
+      c.make,
+      c.model,
+      c.year,
+      c.vin,
+      c.plate,
+      c.status,
+      c.purchaseDate,
+      c.daysInStock,
+      c.purchase.toStringAsFixed(0),
+      c.expensesTotal.toStringAsFixed(0),
+      c.invested.toStringAsFixed(0),
+      c.sale.toStringAsFixed(0),
+      c.saleDate,
+      c.profit.toStringAsFixed(0),
+    ].join(';'));
+  }
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/auto_profit_report.csv');
+  await file.writeAsString(buf.toString());
+  await Share.shareXFiles(
+    [XFile(file.path)],
+    text: 'Отчёт Авто Профит',
+  );
 }
