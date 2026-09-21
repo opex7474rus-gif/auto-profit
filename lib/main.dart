@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -32,6 +33,10 @@ const List<String> kExpenseCategories = [
   'Комиссия',
   'Прочее',
 ];
+
+const int kStaleDays = 30;
+const int kReminderDays = 3;
+const String kLastCheckKey = 'last_check_v1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +75,40 @@ class AutoProfitApp extends StatelessWidget {
     );
   }
 }
+class Attachment {
+  String id;
+  String name;
+  String path;
+  String type; // 'image' | 'pdf' | 'other'
+  String addedAt;
+
+  Attachment({
+    required this.id,
+    required this.name,
+    required this.path,
+    required this.type,
+    required this.addedAt,
+  });
+
+  factory Attachment.fromJson(Map<String, dynamic> json) {
+    return Attachment(
+      id: (json['id'] ?? '') as String,
+      name: (json['name'] ?? '') as String,
+      path: (json['path'] ?? '') as String,
+      type: (json['type'] ?? 'other') as String,
+      addedAt: (json['addedAt'] ?? '') as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'path': path,
+        'type': type,
+        'addedAt': addedAt,
+      };
+}
+
 class Car {
   String id;
   String make;
@@ -81,6 +120,7 @@ class Car {
   String purchasePrice;
   String purchaseDate;
   String status;
+  String statusChangedAt;
   String seller;
   String sellerPhone;
   String sellerAddress;
@@ -89,6 +129,7 @@ class Car {
   String saleDate;
   List<Expense> expenses;
   List<String> photos;
+  List<Attachment> attachments;
 
   Car({
     required this.id,
@@ -101,6 +142,7 @@ class Car {
     required this.purchasePrice,
     required this.purchaseDate,
     required this.status,
+    required this.statusChangedAt,
     required this.seller,
     required this.sellerPhone,
     required this.sellerAddress,
@@ -109,6 +151,7 @@ class Car {
     required this.saleDate,
     required this.expenses,
     required this.photos,
+    required this.attachments,
   });
 
   factory Car.fromJson(Map<String, dynamic> json) {
@@ -123,6 +166,7 @@ class Car {
       purchasePrice: (json['purchasePrice'] ?? '') as String,
       purchaseDate: (json['purchaseDate'] ?? '') as String,
       status: (json['status'] ?? 'Куплен') as String,
+      statusChangedAt: (json['statusChangedAt'] ?? '') as String,
       seller: (json['seller'] ?? '') as String,
       sellerPhone: (json['sellerPhone'] ?? '') as String,
       sellerAddress: (json['sellerAddress'] ?? '') as String,
@@ -134,6 +178,9 @@ class Car {
           .toList(),
       photos: ((json['photos'] ?? []) as List)
           .map((e) => e.toString())
+          .toList(),
+      attachments: ((json['attachments'] ?? []) as List)
+          .map((e) => Attachment.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -149,6 +196,7 @@ class Car {
         'purchasePrice': purchasePrice,
         'purchaseDate': purchaseDate,
         'status': status,
+        'statusChangedAt': statusChangedAt,
         'seller': seller,
         'sellerPhone': sellerPhone,
         'sellerAddress': sellerAddress,
@@ -157,6 +205,7 @@ class Car {
         'saleDate': saleDate,
         'expenses': expenses.map((e) => e.toJson()).toList(),
         'photos': photos,
+        'attachments': attachments.map((a) => a.toJson()).toList(),
       };
 
   double get purchase =>
@@ -184,12 +233,28 @@ class Car {
     return DateTime.tryParse(saleDate);
   }
 
+  DateTime? get statusChangedDateTime {
+    if (statusChangedAt.isEmpty) return null;
+    return DateTime.tryParse(statusChangedAt);
+  }
+
   int get daysInStock {
     final start = purchaseDateTime;
     if (start == null) return 0;
     final end = saleDateTime ?? DateTime.now();
     return end.difference(start).inDays;
   }
+
+  int get daysInCurrentStatus {
+    final d = statusChangedDateTime;
+    if (d == null) return daysInStock;
+    return DateTime.now().difference(d).inDays;
+  }
+
+  bool get isStale =>
+      !isSold &&
+      statusChangedAt.isNotEmpty &&
+      daysInCurrentStatus >= kStaleDays;
 }
 
 class Expense {
@@ -297,6 +362,12 @@ String todayIso() {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 }
+
+String dateToIso(DateTime d) {
+  return '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+}
 class MonthStat {
   final String label;
   final double profit;
@@ -321,8 +392,8 @@ class Analytics {
 
   List<Car> get soldCars => cars.where((c) => c.isSold).toList();
   List<Car> get stockCars => cars.where((c) => !c.isSold).toList();
+  List<Car> get staleCars => cars.where((c) => c.isStale).toList();
 
-  // === ЗАКУП И РАСХОДЫ ===
   double get totalPurchase =>
       cars.fold(0, (s, c) => s + c.purchase);
 
@@ -341,21 +412,18 @@ class Analytics {
   double get totalExpensesSold =>
       soldCars.fold(0, (s, c) => s + c.expensesTotal);
 
-  // === ИНВЕСТИЦИИ (закуп + расходы) ===
   double get totalInvested => totalPurchase + totalExpenses;
   double get totalInvestedStock =>
       totalPurchaseStock + totalExpensesStock;
   double get totalInvestedSold =>
       totalPurchaseSold + totalExpensesSold;
 
-  // === ВЫРУЧКА И ПРИБЫЛЬ ===
   double get totalRevenue =>
       soldCars.fold(0, (s, c) => s + c.sale);
 
   double get totalProfit =>
       soldCars.fold(0, (s, c) => s + c.profit);
 
-  // === СРЕДНИЕ ===
   double get averageProfit => soldCars.isEmpty
       ? 0
       : totalProfit / soldCars.length;
@@ -369,36 +437,27 @@ class Analytics {
 
   double get averageDaysToSell => soldCars.isEmpty
       ? 0
-      : soldCars
-              .map((c) => c.daysInStock)
-              .reduce((a, b) => a + b) /
+      : soldCars.map((c) => c.daysInStock).reduce((a, b) => a + b) /
           soldCars.length;
 
   double get averageInvestment => cars.isEmpty
       ? 0
       : totalInvested / cars.length;
 
-  // === РЕНТАБЕЛЬНОСТЬ ===
   double get profitability => totalInvestedSold == 0
       ? 0
       : (totalProfit / totalInvestedSold) * 100;
 
-  // === ЛУЧШАЯ И ХУДШАЯ ===
   Car? get bestCar {
     if (soldCars.isEmpty) return null;
-    return soldCars.reduce(
-      (a, b) => a.profit >= b.profit ? a : b,
-    );
+    return soldCars.reduce((a, b) => a.profit >= b.profit ? a : b);
   }
 
   Car? get worstCar {
     if (soldCars.isEmpty) return null;
-    return soldCars.reduce(
-      (a, b) => a.profit <= b.profit ? a : b,
-    );
+    return soldCars.reduce((a, b) => a.profit <= b.profit ? a : b);
   }
 
-  // === ТОП-5 РАСХОДОВ ПО КАТЕГОРИЯМ ===
   List<CategoryStat> get topExpenseCategories {
     final map = <String, double>{};
     for (final c in cars) {
@@ -414,7 +473,6 @@ class Analytics {
         .toList();
   }
 
-  // === ПРИБЫЛЬ ПО МЕСЯЦАМ (последние 6) ===
   List<MonthStat> get monthlyStats {
     final now = DateTime.now();
     final months = <MonthStat>[];
@@ -437,7 +495,6 @@ class Analytics {
     return months;
   }
 
-  // === ПРИБЫЛЬ ПО СТАТУСУ (сколько машин в каждом) ===
   Map<String, int> get statusCounts {
     final map = <String, int>{};
     for (final s in kStatuses) {
@@ -703,9 +760,7 @@ class _MonthlyChart extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           Text(
-                            m.profit == 0
-                                ? '—'
-                                : moneyShort(m.profit),
+                            m.profit == 0 ? '—' : moneyShort(m.profit),
                             style: const TextStyle(fontSize: 10),
                             textAlign: TextAlign.center,
                             maxLines: 1,
@@ -715,11 +770,8 @@ class _MonthlyChart extends StatelessWidget {
                           Container(
                             height: barHeight,
                             decoration: BoxDecoration(
-                              color: positive
-                                  ? Colors.green
-                                  : Colors.red,
-                              borderRadius:
-                                  BorderRadius.circular(4),
+                              color: positive ? Colors.green : Colors.red,
+                              borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -882,7 +934,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ===== KPI СЕТКА (всегда видна) =====
         GridView.count(
           crossAxisCount: 2,
           shrinkWrap: true,
@@ -912,9 +963,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   ? 'нет проданных'
                   : '${a.soldCars.length} проданных',
               icon: Icons.trending_up,
-              color: a.totalProfit >= 0
-                  ? Colors.green
-                  : Colors.red,
+              color: a.totalProfit >= 0 ? Colors.green : Colors.red,
             ),
             _KpiCard(
               title: 'Средняя прибыль',
@@ -957,8 +1006,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ],
         ),
-
-        // ===== КНОПКА РАЗВЕРНУТЬ =====
         const SizedBox(height: 8),
         Card(
           clipBehavior: Clip.antiAlias,
@@ -972,9 +1019,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               child: Row(
                 children: [
                   Icon(
-                    expanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
+                    expanded ? Icons.expand_less : Icons.expand_more,
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 10),
@@ -983,9 +1028,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                       expanded
                           ? 'Свернуть подробную аналитику'
                           : 'Развернуть подробную аналитику',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -993,12 +1036,8 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ),
         ),
-
-        // ===== ПОДРОБНАЯ АНАЛИТИКА =====
         if (expanded) ...[
           const SizedBox(height: 8),
-
-          // --- Детализация ---
           const _SectionTitle(
             text: 'Детализация',
             icon: Icons.receipt_long,
@@ -1049,8 +1088,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               ),
             ),
           ),
-
-          // --- Средние показатели ---
           const _SectionTitle(
             text: 'Средние показатели',
             icon: Icons.analytics,
@@ -1071,9 +1108,8 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   _DetailRow(
                     label: 'Средняя прибыль',
                     value: money(a.averageProfit),
-                    valueColor: a.averageProfit >= 0
-                        ? Colors.green
-                        : Colors.red,
+                    valueColor:
+                        a.averageProfit >= 0 ? Colors.green : Colors.red,
                   ),
                   _DetailRow(
                     label: 'Средние вложения в машину',
@@ -1089,8 +1125,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               ),
             ),
           ),
-
-          // --- Топ-5 расходов ---
           const _SectionTitle(
             text: 'Топ-5 расходов по категориям',
             icon: Icons.local_gas_station,
@@ -1099,24 +1133,16 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             stats: a.topExpenseCategories,
             totalExpenses: a.totalExpenses,
           ),
-
-          // --- Прибыль по месяцам ---
           const _SectionTitle(
             text: 'Прибыль по месяцам',
             icon: Icons.calendar_month,
           ),
           _MonthlyChart(stats: a.monthlyStats),
-
-          // --- Лучшая / худшая ---
           const _SectionTitle(
             text: 'Лучшая и худшая машина',
             icon: Icons.emoji_events,
           ),
-          _BestWorstCard(
-            best: a.bestCar,
-            worst: a.worstCar,
-          ),
-
+          _BestWorstCard(best: a.bestCar, worst: a.worstCar),
           const SizedBox(height: 12),
         ],
       ],
@@ -1135,7 +1161,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
   final searchController = TextEditingController();
   String search = '';
-  String listMode = 'stock'; // 'stock' | 'sold'
+  String listMode = 'stock';
+  String sortMode = 'purchaseDesc';
+  bool showCheckReminder = false;
 
   @override
   void initState() {
@@ -1158,6 +1186,27 @@ class _HomeScreenState extends State<HomeScreen> {
         ..addAll(data);
       loading = false;
     });
+    _checkReminder();
+  }
+
+  Future<void> _checkReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastStr = prefs.getString(kLastCheckKey);
+    if (lastStr == null) {
+      await prefs.setString(kLastCheckKey, todayIso());
+      return;
+    }
+    final last = DateTime.tryParse(lastStr);
+    if (last == null) return;
+    final diff = DateTime.now().difference(last).inDays;
+    if (!mounted) return;
+    setState(() => showCheckReminder = diff >= kReminderDays);
+  }
+
+  Future<void> _dismissReminder() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kLastCheckKey, todayIso());
+    setState(() => showCheckReminder = false);
   }
 
   Future<void> _persist() async {
@@ -1176,6 +1225,38 @@ class _HomeScreenState extends State<HomeScreen> {
           c.plate.toLowerCase().contains(q) ||
           c.seller.toLowerCase().contains(q);
     }).toList();
+  }
+
+  List<Car> _sort(List<Car> src) {
+    final list = List<Car>.from(src);
+    switch (sortMode) {
+      case 'purchaseAsc':
+        list.sort((a, b) {
+          final da = a.purchaseDateTime ?? DateTime(2100);
+          final db = b.purchaseDateTime ?? DateTime(2100);
+          return da.compareTo(db);
+        });
+        break;
+      case 'profitDesc':
+        list.sort((a, b) => b.profit.compareTo(a.profit));
+        break;
+      case 'alpha':
+        list.sort((a, b) => '${a.make} ${a.model}'
+            .toLowerCase()
+            .compareTo('${b.make} ${b.model}'.toLowerCase()));
+        break;
+      case 'daysDesc':
+        list.sort((a, b) => b.daysInStock.compareTo(a.daysInStock));
+        break;
+      case 'purchaseDesc':
+      default:
+        list.sort((a, b) {
+          final da = a.purchaseDateTime ?? DateTime(1900);
+          final db = b.purchaseDateTime ?? DateTime(1900);
+          return db.compareTo(da);
+        });
+    }
+    return list;
   }
 
   void addCar() {
@@ -1207,6 +1288,12 @@ class _HomeScreenState extends State<HomeScreen> {
             for (final path in car.photos) {
               try {
                 final f = File(path);
+                if (await f.exists()) await f.delete();
+              } catch (_) {}
+            }
+            for (final a in car.attachments) {
+              try {
+                final f = File(a.path);
                 if (await f.exists()) await f.delete();
               } catch (_) {}
             }
@@ -1296,9 +1383,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final theme = Theme.of(context);
     final a = analytics;
-    final visible = _filter(
-      listMode == 'stock' ? a.stockCars : a.soldCars,
-    );
+    final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
+    final visible = _sort(_filter(sourceList));
 
     return Scaffold(
       appBar: AppBar(
@@ -1354,7 +1440,65 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // === АНАЛИТИКА ===
+          // Баннер "проверьте машины"
+          if (showCheckReminder)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_active,
+                        color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Прошло $kReminderDays дня. Проверьте машины на складе.',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _dismissReminder,
+                      child: const Text('Ок'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Баннер "залежались"
+          if (a.staleCars.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber,
+                        color: Colors.red),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${a.staleCars.length} машин(ы) '
+                        'без изменения статуса больше $kStaleDays дней',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Аналитика
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             sliver: SliverToBoxAdapter(
@@ -1372,7 +1516,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // === ПОИСК ===
+          // Поиск
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             sliver: SliverToBoxAdapter(
@@ -1398,7 +1542,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // === ФИЛЬТР-ПЕРЕКЛЮЧАТЕЛЬ ===
+          // Переключатель склад/продано
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             sliver: SliverToBoxAdapter(
@@ -1409,8 +1553,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       label: 'В наличии',
                       count: a.stockCars.length,
                       selected: listMode == 'stock',
-                      onTap: () =>
-                          setState(() => listMode = 'stock'),
+                      onTap: () => setState(() => listMode = 'stock'),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -1419,8 +1562,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       label: 'Проданные',
                       count: a.soldCars.length,
                       selected: listMode == 'sold',
-                      onTap: () =>
-                          setState(() => listMode = 'sold'),
+                      onTap: () => setState(() => listMode = 'sold'),
                     ),
                   ),
                 ],
@@ -1428,34 +1570,56 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // === СКЛАД: ЗАГОЛОВОК ===
+          // Заголовок + сортировка
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
                   Icon(
-                    listMode == 'stock'
-                        ? Icons.warehouse
-                        : Icons.inventory,
+                    listMode == 'stock' ? Icons.warehouse : Icons.inventory,
                     size: 18,
                   ),
                   const SizedBox(width: 6),
-                  Text(
-                    listMode == 'stock'
-                        ? 'Автомобили в наличии'
-                        : 'Проданные автомобили',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: Text(
+                      listMode == 'stock'
+                          ? 'В наличии'
+                          : 'Проданные',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.sort),
+                    tooltip: 'Сортировка',
+                    onSelected: (v) => setState(() => sortMode = v),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'purchaseDesc',
+                          child: Text('По дате покупки ↓')),
+                      PopupMenuItem(
+                          value: 'purchaseAsc',
+                          child: Text('По дате покупки ↑')),
+                      PopupMenuItem(
+                          value: 'profitDesc',
+                          child: Text('По прибыли')),
+                      PopupMenuItem(
+                          value: 'daysDesc',
+                          child: Text('По дням на складе')),
+                      PopupMenuItem(
+                          value: 'alpha',
+                          child: Text('По алфавиту')),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
 
-          // === СПИСОК МАШИН ===
+          // Список
           if (visible.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -1563,7 +1727,6 @@ class _CarListTile extends StatelessWidget {
     final photos = car.photos;
     final days = car.daysInStock;
 
-    // Цвет статуса по свежести
     Color daysColor = Colors.green;
     if (car.isSold) {
       daysColor = Colors.blueGrey;
@@ -1589,12 +1752,37 @@ class _CarListTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '${car.make} ${car.model}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${car.make} ${car.model}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        if (car.isStale)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'Залежалась',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -1619,15 +1807,12 @@ class _CarListTile extends StatelessWidget {
                     else ...[
                       Text(
                         'Вложено: ${money(car.invested)}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.schedule,
-                              size: 14, color: daysColor),
+                          Icon(Icons.schedule, size: 14, color: daysColor),
                           const SizedBox(width: 4),
                           Text(
                             'На складе $days дн.',
@@ -1783,14 +1968,13 @@ class _CarFormScreenState extends State<CarFormScreen> {
       );
       return;
     }
-    final iso = purchaseDate == null
-        ? ''
-        : '${purchaseDate!.year.toString().padLeft(4, '0')}-'
-            '${purchaseDate!.month.toString().padLeft(2, '0')}-'
-            '${purchaseDate!.day.toString().padLeft(2, '0')}';
+    final iso = purchaseDate == null ? '' : dateToIso(purchaseDate!);
 
     if (isEdit) {
       final c = widget.car!;
+      if (c.status != status) {
+        c.statusChangedAt = todayIso();
+      }
       c.make = make.text.trim();
       c.model = model.text.trim();
       c.year = year.text.trim();
@@ -1818,6 +2002,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           purchasePrice: purchase.text.trim(),
           purchaseDate: iso,
           status: status,
+          statusChangedAt: todayIso(),
           seller: seller.text.trim(),
           sellerPhone: sellerPhone.text.trim(),
           sellerAddress: sellerAddress.text.trim(),
@@ -1826,6 +2011,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           saleDate: '',
           expenses: [],
           photos: [],
+          attachments: [],
         ),
       );
     }
@@ -1880,12 +2066,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
               border: OutlineInputBorder(),
             ),
             items: kStatuses
-                .map(
-                  (s) => DropdownMenuItem(
-                    value: s,
-                    child: Text(s),
-                  ),
-                )
+                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                 .toList(),
             onChanged: (value) {
               if (value != null) setState(() => status = value);
@@ -1980,70 +2161,15 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     }
   }
 
-  Future<void> addPhoto() async {
-    final picker = ImagePicker();
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Из галереи'),
-              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-            ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Сделать фото'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return;
-    final picked = await picker.pickImage(
-      source: source,
-      imageQuality: 75,
-      maxWidth: 1600,
-    );
-    if (picked == null) return;
-    final dir = await getApplicationDocumentsDirectory();
-    final photosDir = Directory(p.join(dir.path, 'photos'));
-    if (!await photosDir.exists()) await photosDir.create(recursive: true);
-    final newPath = p.join(
-      photosDir.path,
-      'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
-    );
-    await File(picked.path).copy(newPath);
-    setState(() {
-      widget.car.photos.add(newPath);
-    });
-    widget.onChanged();
-  }
-
-  Future<void> removePhoto(int index) async {
-    final path = widget.car.photos[index];
-    try {
-      final f = File(path);
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
-    setState(() {
-      widget.car.photos.removeAt(index);
-    });
-    widget.onChanged();
-  }
-
   void saveSale() {
     setState(() {
       widget.car.salePrice = salePrice.text.trim();
-      widget.car.saleDate = saleDate == null
-          ? todayIso()
-          : '${saleDate!.year.toString().padLeft(4, '0')}-'
-              '${saleDate!.month.toString().padLeft(2, '0')}-'
-              '${saleDate!.day.toString().padLeft(2, '0')}';
-      if (widget.car.sale > 0) widget.car.status = 'Продан';
+      widget.car.saleDate =
+          saleDate == null ? todayIso() : dateToIso(saleDate!);
+      if (widget.car.sale > 0 && widget.car.status != 'Продан') {
+        widget.car.status = 'Продан';
+        widget.car.statusChangedAt = todayIso();
+      }
     });
     widget.onChanged();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2083,7 +2209,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Удалить автомобиль?'),
         content: const Text(
-          'Автомобиль, его расходы и фотографии будут удалены. Действие нельзя отменить.',
+          'Автомобиль, его расходы, фотографии и документы будут удалены. Действие нельзя отменить.',
         ),
         actions: [
           TextButton(
@@ -2129,8 +2255,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
         children: [
           _PhotosBlock(
             car: car,
-            onAdd: addPhoto,
-            onRemove: removePhoto,
+            onChanged: widget.onChanged,
           ),
           const SizedBox(height: 12),
           Card(
@@ -2159,6 +2284,11 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                         : formatDate(car.purchaseDateTime!),
                   ),
                   _infoRow('На складе', '${car.daysInStock} дн.'),
+                  if (car.isStale)
+                    _infoRow(
+                      'В статусе',
+                      '${car.daysInCurrentStatus} дн. ⚠️',
+                    ),
                   if (car.saleDate.isNotEmpty)
                     _infoRow(
                       'Дата продажи',
@@ -2241,6 +2371,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
           ),
           const SizedBox(height: 12),
           _ExpensesBlock(car: car, onChanged: widget.onChanged),
+          const SizedBox(height: 12),
+          _DocumentsBlock(car: car, onChanged: widget.onChanged),
           const SizedBox(height: 12),
           Card(
             child: Padding(
@@ -2351,14 +2483,60 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
 }
 class _PhotosBlock extends StatelessWidget {
   final Car car;
-  final VoidCallback onAdd;
-  final void Function(int index) onRemove;
+  final VoidCallback onChanged;
 
-  const _PhotosBlock({
-    required this.car,
-    required this.onAdd,
-    required this.onRemove,
-  });
+  const _PhotosBlock({required this.car, required this.onChanged});
+
+  Future<void> _addPhoto(BuildContext context) async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Из галереи'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Сделать фото'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    final picked = await picker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1600,
+    );
+    if (picked == null) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final photosDir = Directory(p.join(dir.path, 'photos'));
+    if (!await photosDir.exists()) await photosDir.create(recursive: true);
+    final newPath = p.join(
+      photosDir.path,
+      'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    await File(picked.path).copy(newPath);
+    car.photos.add(newPath);
+    onChanged();
+  }
+
+  Future<void> _removePhoto(int index) async {
+    final path = car.photos[index];
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    car.photos.removeAt(index);
+    onChanged();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2379,7 +2557,7 @@ class _PhotosBlock extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  onPressed: onAdd,
+                  onPressed: () => _addPhoto(context),
                   icon: const Icon(Icons.add_a_photo),
                 ),
               ],
@@ -2409,7 +2587,8 @@ class _PhotosBlock extends StatelessWidget {
                                 ? Image.file(file, fit: BoxFit.cover)
                                 : Container(
                                     color: Colors.black12,
-                                    child: const Icon(Icons.broken_image),
+                                    child:
+                                        const Icon(Icons.broken_image),
                                   ),
                           ),
                         ),
@@ -2417,7 +2596,7 @@ class _PhotosBlock extends StatelessWidget {
                           top: 0,
                           right: 0,
                           child: InkWell(
-                            onTap: () => onRemove(index),
+                            onTap: () => _removePhoto(index),
                             child: Container(
                               decoration: const BoxDecoration(
                                 color: Colors.black54,
@@ -2444,6 +2623,207 @@ class _PhotosBlock extends StatelessWidget {
   }
 }
 
+class _DocumentsBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _DocumentsBlock({required this.car, required this.onChanged});
+
+  IconData _icon(String type) {
+    if (type == 'image') return Icons.image;
+    if (type == 'pdf') return Icons.picture_as_pdf;
+    return Icons.description;
+  }
+
+  Future<void> _pick(BuildContext context, String source) async {
+    String? srcPath;
+    String name = '';
+    String type = 'other';
+
+    if (source == 'camera' || source == 'gallery') {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source == 'camera'
+            ? ImageSource.camera
+            : ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 2000,
+      );
+      if (picked == null) return;
+      srcPath = picked.path;
+      name = p.basename(picked.path);
+      type = 'image';
+    } else {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null) return;
+      srcPath = result.files.single.path;
+      if (srcPath == null) return;
+      name = result.files.single.name;
+      final ext = p.extension(name).toLowerCase();
+      if (ext == '.pdf') {
+        type = 'pdf';
+      } else if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic']
+          .contains(ext)) {
+        type = 'image';
+      } else {
+        type = 'other';
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final docsDir = Directory(p.join(dir.path, 'documents'));
+    if (!await docsDir.exists()) await docsDir.create(recursive: true);
+    final newPath = p.join(
+      docsDir.path,
+      'doc_${DateTime.now().microsecondsSinceEpoch}'
+      '${p.extension(srcPath)}',
+    );
+    await File(srcPath).copy(newPath);
+
+    car.attachments.add(
+      Attachment(
+        id: newId(),
+        name: name,
+        path: newPath,
+        type: type,
+        addedAt: todayIso(),
+      ),
+    );
+    onChanged();
+  }
+
+  Future<void> _open(BuildContext context, Attachment a) async {
+    final file = File(a.path);
+    if (!await file.exists()) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Файл не найден')),
+      );
+      return;
+    }
+    if (a.type == 'image') {
+      if (!context.mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: InteractiveViewer(
+            child: Image.file(file),
+          ),
+        ),
+      );
+    } else {
+      try {
+        await OpenFilex.open(a.path);
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось открыть: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _remove(Attachment a) async {
+    try {
+      final f = File(a.path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    car.attachments.removeWhere((x) => x.id == a.id);
+    onChanged();
+  }
+
+  void _showAddMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Сфотографировать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'camera');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Из галереи'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'gallery');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('Выбрать файл (PDF, DOCX…)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'files');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Документы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _showAddMenu(context),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.attachments.isEmpty)
+              const Text('Документов пока нет')
+            else
+              ...car.attachments.map(
+                (a) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _icon(a.type),
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(a.addedAt),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _remove(a),
+                  ),
+                  onTap: () => _open(context, a),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 class _ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
@@ -2542,12 +2922,10 @@ Future<void> showExpenseDialog({
                       border: OutlineInputBorder(),
                     ),
                     items: kExpenseCategories
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c),
-                          ),
-                        )
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            ))
                         .toList(),
                     onChanged: (v) {
                       if (v != null) setLocal(() => category = v);
@@ -2626,12 +3004,12 @@ Future<void> showExpenseDialog({
     },
   );
 }
-
 Future<void> exportCsv(List<Car> cars) async {
   final buf = StringBuffer();
   buf.writeln(
     'Марка;Модель;Год;VIN;Госномер;Статус;Дата покупки;Дней на складе;'
-    'Цена покупки;Расходы;Всего вложено;Цена продажи;Дата продажи;Прибыль',
+    'Дней в статусе;Цена покупки;Расходы;Всего вложено;Цена продажи;'
+    'Дата продажи;Прибыль',
   );
   for (final c in cars) {
     buf.writeln([
@@ -2643,6 +3021,7 @@ Future<void> exportCsv(List<Car> cars) async {
       c.status,
       c.purchaseDate,
       c.daysInStock,
+      c.daysInCurrentStatus,
       c.purchase.toStringAsFixed(0),
       c.expensesTotal.toStringAsFixed(0),
       c.invested.toStringAsFixed(0),
