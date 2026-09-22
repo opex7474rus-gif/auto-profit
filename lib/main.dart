@@ -55,6 +55,7 @@ const int kReminderDays = 3;
 const String kLastCheckKey = 'last_check_v1';
 const int kTrashDays = 30;
 const double kMinMargin = 30000;
+const double kPartnerProfitShare = 0.33;
 
 const Map<String, List<String>> kCarCatalog = {
   'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora'],
@@ -363,6 +364,9 @@ class Car {
   double get invested => purchase + expensesTotal;
 
   double get profit => sale - invested;
+
+  double get partnerProfit =>
+      partnerAmount > 0 ? profit * kPartnerProfitShare : 0;
 
   bool get isSold => sale > 0;
 
@@ -784,6 +788,15 @@ class Storage {
 }
 String newId() => DateTime.now().microsecondsSinceEpoch.toString();
 
+String carsLabel(int n) {
+  final mod10 = n % 10;
+  final mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return 'машин';
+  if (mod10 == 1) return 'машина';
+  if (mod10 >= 2 && mod10 <= 4) return 'машины';
+  return 'машин';
+}
+
 String money(double value) {
   final f = NumberFormat('#,##0');
   return '${f.format(value).replaceAll(',', ' ')} ₽';
@@ -831,7 +844,7 @@ Future<void> exportCsv(List<Car> cars) async {
   buf.writeln(
     'Марка;Модель;Год;VIN;Госномер;Статус;Метки;Дата покупки;'
     'Дней на складе;Цена покупки;Расходы;Всего вложено;'
-    'Доля партнёра;Цена продажи;Дата продажи;Прибыль',
+    'Доля партнёра;Прибыль партнёра;Цена продажи;Дата продажи;Прибыль',
   );
   for (final c in cars) {
     buf.writeln([
@@ -848,6 +861,7 @@ Future<void> exportCsv(List<Car> cars) async {
       c.expensesTotal.toStringAsFixed(0),
       c.invested.toStringAsFixed(0),
       c.partnerAmount.toStringAsFixed(0),
+      c.partnerProfit.toStringAsFixed(0),
       c.sale.toStringAsFixed(0),
       c.saleDate,
       c.profit.toStringAsFixed(0),
@@ -905,28 +919,21 @@ class Analytics {
       : profitThisMonth / soldThisMonthCount;
 
   double get totalPurchase => cars.fold(0, (s, c) => s + c.purchase);
-  double get totalPurchaseStock =>
-      stockCars.fold(0, (s, c) => s + c.purchase);
-  double get totalPurchaseSold =>
-      soldCars.fold(0, (s, c) => s + c.purchase);
-
   double get totalExpenses =>
       cars.fold(0, (s, c) => s + c.expensesTotal);
+  double get totalInvested => totalPurchase + totalExpenses;
+
+  double get totalPurchaseStock =>
+      stockCars.fold(0, (s, c) => s + c.purchase);
   double get totalExpensesStock =>
       stockCars.fold(0, (s, c) => s + c.expensesTotal);
-  double get totalExpensesSold =>
-      soldCars.fold(0, (s, c) => s + c.expensesTotal);
-
-  double get totalPartnerInvestment =>
-      cars.fold(0.0, (s, c) => s + c.partnerAmount);
-  double get totalPartnerStock =>
-      stockCars.fold(0.0, (s, c) => s + c.partnerAmount);
-  double get totalPartnerSold =>
-      soldCars.fold(0.0, (s, c) => s + c.partnerAmount);
-
-  double get totalInvested => totalPurchase + totalExpenses;
   double get totalInvestedStock =>
       totalPurchaseStock + totalExpensesStock;
+
+  double get totalPurchaseSold =>
+      soldCars.fold(0, (s, c) => s + c.purchase);
+  double get totalExpensesSold =>
+      soldCars.fold(0, (s, c) => s + c.expensesTotal);
   double get totalInvestedSold =>
       totalPurchaseSold + totalExpensesSold;
 
@@ -953,6 +960,27 @@ class Analytics {
   double get profitability => totalInvestedSold == 0
       ? 0
       : (totalProfit / totalInvestedSold) * 100;
+
+  List<Car> get partnerCars =>
+      cars.where((c) => c.partnerAmount > 0).toList();
+  List<Car> get partnerStock =>
+      stockCars.where((c) => c.partnerAmount > 0).toList();
+  List<Car> get partnerSold =>
+      soldCars.where((c) => c.partnerAmount > 0).toList();
+
+  int get partnerCarsCount => partnerCars.length;
+  int get partnerCarsCountStock => partnerStock.length;
+  int get partnerCarsCountSold => partnerSold.length;
+
+  double get totalPartnerInvestment =>
+      partnerCars.fold(0.0, (s, c) => s + c.partnerAmount);
+  double get totalPartnerStock =>
+      partnerStock.fold(0.0, (s, c) => s + c.partnerAmount);
+  double get totalPartnerSold =>
+      partnerSold.fold(0.0, (s, c) => s + c.partnerAmount);
+
+  double get partnerProfitShare =>
+      partnerSold.fold(0.0, (s, c) => s + c.partnerProfit);
 
   Car? get bestCar {
     if (soldCars.isEmpty) return null;
@@ -1443,8 +1471,13 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
             _KpiCard(
               title: 'Доля партнёра',
-              value: moneyShort(a.totalPartnerInvestment),
-              subtitle: '${a.stockCars.length} машин',
+              value: a.partnerCarsCount == 0
+                  ? '—'
+                  : moneyShort(a.totalPartnerInvestment),
+              subtitle: a.partnerCarsCount == 0
+                  ? 'нигде не указана'
+                  : 'в ${a.partnerCarsCount} '
+                      '${carsLabel(a.partnerCarsCount)}',
               icon: Icons.handshake,
               color: Colors.brown,
             ),
@@ -1485,11 +1518,19 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               color: Colors.indigo,
             ),
             _KpiCard(
-              title: 'В наличии',
-              value: '${a.stockCars.length}',
-              subtitle: moneyShort(a.totalInvestedStock),
-              icon: Icons.directions_car,
-              color: Colors.orange,
+              title: 'Закуп в наличии',
+              value: moneyShort(a.totalPurchaseStock),
+              subtitle: '${a.stockCars.length} '
+                  '${carsLabel(a.stockCars.length)}, без расходов',
+              icon: Icons.shopping_cart,
+              color: Colors.deepOrange,
+            ),
+            _KpiCard(
+              title: 'Расходы в наличии',
+              value: moneyShort(a.totalExpensesStock),
+              subtitle: 'ремонты, запчасти и т.д.',
+              icon: Icons.build,
+              color: Colors.redAccent,
             ),
             _KpiCard(
               title: 'Рентабельность',
@@ -1558,30 +1599,34 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     value: money(a.totalInvested),
                     valueColor: Colors.blue,
                   ),
-                  _DetailRow(
-                    label: 'Всего вложено партнёром',
-                    value: money(a.totalPartnerInvestment),
-                    valueColor: Colors.brown,
-                  ),
                   const SizedBox(height: 6),
                   _DetailRow(
-                    label: 'Вложено в наличие',
+                    label: 'Закуп в наличии',
+                    value: money(a.totalPurchaseStock),
+                    valueColor: Colors.deepOrange,
+                  ),
+                  _DetailRow(
+                    label: 'Расходы в наличии',
+                    value: money(a.totalExpensesStock),
+                    valueColor: Colors.redAccent,
+                  ),
+                  _DetailRow(
+                    label: 'Всего вложено в наличие',
                     value: money(a.totalInvestedStock),
                     valueColor: Colors.orange,
                   ),
+                  const SizedBox(height: 6),
                   _DetailRow(
-                    label: 'Доля партнёра в наличии',
-                    value: money(a.totalPartnerStock),
-                    valueColor: Colors.brown,
+                    label: 'Закуп в проданных',
+                    value: money(a.totalPurchaseSold),
                   ),
                   _DetailRow(
-                    label: 'Вложено в проданные',
+                    label: 'Расходы в проданных',
+                    value: money(a.totalExpensesSold),
+                  ),
+                  _DetailRow(
+                    label: 'Всего вложено в проданные',
                     value: money(a.totalInvestedSold),
-                  ),
-                  _DetailRow(
-                    label: 'Доля партнёра в проданных',
-                    value: money(a.totalPartnerSold),
-                    valueColor: Colors.brown,
                   ),
                   const Divider(),
                   _DetailRow(
@@ -1603,6 +1648,67 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                         ? Colors.green
                         : Colors.red,
                   ),
+                ],
+              ),
+            ),
+          ),
+          const _SectionTitle(
+            text: 'Доля партнёра',
+            icon: Icons.handshake,
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  if (a.partnerCarsCount == 0)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Доля партнёра нигде не указана',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else ...[
+                    _DetailRow(
+                      label: 'Всего вложено партнёром',
+                      value: money(a.totalPartnerInvestment),
+                      valueColor: Colors.brown,
+                    ),
+                    _DetailRow(
+                      label: 'Указано в машинах',
+                      value: '${a.partnerCarsCount} '
+                          '${carsLabel(a.partnerCarsCount)}',
+                    ),
+                    const Divider(),
+                    _DetailRow(
+                      label: 'Доля в наличии',
+                      value: money(a.totalPartnerStock),
+                      valueColor: Colors.brown,
+                    ),
+                    _DetailRow(
+                      label: 'Машин в наличии с долей',
+                      value: '${a.partnerCarsCountStock}',
+                    ),
+                    const SizedBox(height: 6),
+                    _DetailRow(
+                      label: 'Доля в проданных',
+                      value: money(a.totalPartnerSold),
+                      valueColor: Colors.brown,
+                    ),
+                    _DetailRow(
+                      label: 'Машин проданных с долей',
+                      value: '${a.partnerCarsCountSold}',
+                    ),
+                    const Divider(),
+                    _DetailRow(
+                      label: 'Прибыль партнёра (33% от прибыли)',
+                      value: money(a.partnerProfitShare),
+                      valueColor: a.partnerProfitShare >= 0
+                          ? Colors.green
+                          : Colors.red,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -3055,7 +3161,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           field(
             partnerInvestment,
             partnerFocus,
-            'Доля партнёра (₽)',
+            'Доля партнёра (₽) — прибыль партнёра всегда 33%',
             number: true,
           ),
           Padding(
@@ -3457,12 +3563,6 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   const Divider(),
                   _financeRow('Всего вложено', car.invested, bold: true),
                   _financeRow(
-                    'Доля партнёра',
-                    car.partnerAmount,
-                    bold: true,
-                    valueColor: Colors.brown,
-                  ),
-                  _financeRow(
                     'Безубыточная цена (маржа ${money(kMinMargin)})',
                     car.breakEvenPrice,
                     bold: true,
@@ -3471,6 +3571,28 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   const Divider(),
                   _financeRow('Цена продажи', car.sale),
                   _financeRow('Прибыль', car.profit, bold: true),
+                  if (car.partnerAmount > 0) ...[
+                    const Divider(),
+                    _financeRow(
+                      'Доля партнёра',
+                      car.partnerAmount,
+                      valueColor: Colors.brown,
+                    ),
+                    _financeRow(
+                      'Прибыль партнёра (33%)',
+                      car.partnerProfit,
+                      bold: true,
+                      valueColor: Colors.brown,
+                    ),
+                    _financeRow(
+                      'Прибыль вам (67%)',
+                      car.isSold
+                          ? car.profit - car.partnerProfit
+                          : 0,
+                      bold: true,
+                      valueColor: Colors.green,
+                    ),
+                  ],
                 ],
               ),
             ),
