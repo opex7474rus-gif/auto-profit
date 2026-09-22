@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,7 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSupabaseUrl = 'https://sqawuzstldgjmllwwtci.supabase.co';
 const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWw58bjCxXtRVkJJLo';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWW58bjCxXtRVkJJLo';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
@@ -420,15 +421,60 @@ class Expense {
       };
 }
 
+bool isCloudUrl(String s) => s.startsWith('http');
+
+bool isLocalMarker(String s) => s.startsWith('local:');
+
+String localPathOf(String s) {
+  if (isLocalMarker(s)) return s.substring(6);
+  return s;
+}
+
 class Storage {
   static const _key = 'cars_v1';
   static const _trashKey = 'cars_trash_v1';
   static const _themeKey = 'theme_mode_v1';
   static const _sellerKey = 'seller_data_v1';
   static const _buyerKey = 'buyer_data_v1';
+  static const _pendingKey = 'pending_sync_v1';
 
   static SupabaseClient get _db => Supabase.instance.client;
   static String? get _uid => _db.auth.currentUser?.id;
+
+  static Future<String?> uploadFile({
+    required String bucket,
+    required String localPath,
+  }) async {
+    try {
+      final uid = _uid;
+      if (uid == null) return null;
+      final f = File(localPath);
+      if (!await f.exists()) return null;
+      final ext = p.extension(localPath).toLowerCase();
+      final name =
+          '$uid/${DateTime.now().microsecondsSinceEpoch}${ext.isEmpty ? '.bin' : ext}';
+      await _db.storage.from(bucket).upload(name, f);
+      return _db.storage.from(bucket).getPublicUrl(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> hasPending() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_pendingKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setPending(bool v) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_pendingKey, v);
+    } catch (_) {}
+  }
 
   static Map<String, dynamic> _carToRow(Car c) {
     final uid = _uid;
@@ -520,6 +566,11 @@ class Storage {
           _key,
           jsonEncode(cars.map((c) => c.toJson()).toList()),
         );
+
+        if (await hasPending()) {
+          await save(cars);
+        }
+
         return cars;
       }
     } catch (_) {}
@@ -539,6 +590,52 @@ class Storage {
     try {
       if (_uid == null) return;
 
+      bool allUploaded = true;
+
+      for (final c in cars) {
+        final newPhotos = <String>[];
+        for (final ph in c.photos) {
+          if (isLocalMarker(ph)) {
+            final url = await uploadFile(
+              bucket: 'photos',
+              localPath: localPathOf(ph),
+            );
+            if (url != null) {
+              newPhotos.add(url);
+            } else {
+              newPhotos.add(ph);
+              allUploaded = false;
+            }
+          } else {
+            newPhotos.add(ph);
+          }
+        }
+        c.photos = newPhotos;
+
+        for (final a in c.attachments) {
+          if (isLocalMarker(a.path)) {
+            final url = await uploadFile(
+              bucket: 'documents',
+              localPath: localPathOf(a.path),
+            );
+            if (url != null) {
+              a.path = url;
+            } else {
+              allUploaded = false;
+            }
+          }
+        }
+      }
+
+      // Обновляем локальный кеш уже после загрузки файлов
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _key,
+          jsonEncode(cars.map((c) => c.toJson()).toList()),
+        );
+      } catch (_) {}
+
       final existingRows = await _db.from('cars').select('id');
       final existingIds = (existingRows as List)
           .map((r) => (r['id'] ?? '').toString())
@@ -554,7 +651,11 @@ class Storage {
       if (toDelete.isNotEmpty) {
         await _db.from('cars').delete().inFilter('id', toDelete);
       }
-    } catch (_) {}
+
+      await setPending(!allUploaded);
+    } catch (_) {
+      await setPending(true);
+    }
   }
 
   static Future<void> clearLocalCache() async {
@@ -562,6 +663,7 @@ class Storage {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
       await prefs.remove(_trashKey);
+      await prefs.remove(_pendingKey);
     } catch (_) {}
   }
 
@@ -598,14 +700,16 @@ class Storage {
         cleaned.add(t);
       } else {
         for (final path in t.car.photos) {
+          if (isCloudUrl(path)) continue;
           try {
-            final f = File(path);
+            final f = File(localPathOf(path));
             if (await f.exists()) await f.delete();
           } catch (_) {}
         }
         for (final a in t.car.attachments) {
+          if (isCloudUrl(a.path)) continue;
           try {
-            final f = File(a.path);
+            final f = File(localPathOf(a.path));
             if (await f.exists()) await f.delete();
           } catch (_) {}
         }
@@ -1376,7 +1480,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ],
         ),
-                 const SizedBox(height: 8),
+        const SizedBox(height: 8),
         Card(
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -1551,17 +1655,42 @@ class _HomeScreenState extends State<HomeScreen> {
   String sortMode = 'purchaseDesc';
   bool showCheckReminder = false;
   int trashCount = 0;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _subscribeRealtime();
   }
 
   @override
   void dispose() {
+    _channel?.unsubscribe();
     searchController.dispose();
     super.dispose();
+  }
+
+  void _subscribeRealtime() {
+    try {
+      _channel = Supabase.instance.client
+          .channel('cars_changes')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'cars',
+            callback: (payload) async {
+              final data = await Storage.load();
+              if (!mounted) return;
+              setState(() {
+                cars
+                  ..clear()
+                  ..addAll(data);
+              });
+            },
+          )
+          .subscribe();
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -1744,210 +1873,210 @@ class _HomeScreenState extends State<HomeScreen> {
       await Supabase.instance.client.auth.signOut();
     }
   }
-   IconData _themeIcon(ThemeMode mode) {
-  switch (mode) {
-    case ThemeMode.light:
-      return Icons.light_mode;
-    case ThemeMode.dark:
-      return Icons.dark_mode;
-    default:
-      return Icons.brightness_auto;
-  }
-}
 
-void _cycleTheme(ThemeMode mode) {
-  final next = mode == ThemeMode.system
-      ? ThemeMode.light
-      : mode == ThemeMode.light
-          ? ThemeMode.dark
-          : ThemeMode.system;
-  themeNotifier.value = next;
-  Storage.saveTheme(next);
-}
-
-Future<void> exportJson() async {
-  try {
-    final data = jsonEncode(cars.map((c) => c.toJson()).toList());
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/auto_profit_backup.json');
-    await file.writeAsString(data);
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: 'Резервная копия Авто Профит',
-    );
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ошибка экспорта: $e')),
-    );
-  }
-}
-
-Future<void> importJson() async {
-  try {
-    final result = await FilePicker.platform.pickFiles();
-    if (result == null) return;
-    final path = result.files.single.path;
-    if (path == null) return;
-    final content = await File(path).readAsString();
-    final list = jsonDecode(content) as List;
-    final imported = list
-        .map((e) => Car.fromJson(e as Map<String, dynamic>))
-        .toList();
-    if (!mounted) return;
-    setState(() => cars.addAll(imported));
-    _persist();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Импортировано ${imported.length} авто')),
-    );
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ошибка импорта: $e')),
-    );
-  }
-}
-
-@override
-Widget build(BuildContext context) {
-  if (loading) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
-    );
+  IconData _themeIcon(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return Icons.light_mode;
+      case ThemeMode.dark:
+        return Icons.dark_mode;
+      default:
+        return Icons.brightness_auto;
+    }
   }
 
-  final theme = Theme.of(context);
-  final a = analytics;
-  final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
-  final visible = _sort(_filter(sourceList));
-  final userEmail =
-      Supabase.instance.client.auth.currentUser?.email ?? '';
+  void _cycleTheme(ThemeMode mode) {
+    final next = mode == ThemeMode.system
+        ? ThemeMode.light
+        : mode == ThemeMode.light
+            ? ThemeMode.dark
+            : ThemeMode.system;
+    themeNotifier.value = next;
+    Storage.saveTheme(next);
+  }
 
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text('Авто Профит'),
-      actions: [
-        PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'export') exportJson();
-            if (value == 'csv') exportCsv(cars);
-            if (value == 'import') importJson();
-            if (value == 'trash') openTrash();
-            if (value == 'history') openHistory();
-            if (value == 'logout') _logout();
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'account',
-              enabled: false,
-              child: ListTile(
-                leading: const Icon(Icons.person_outline),
-                title: Text(
-                  userEmail.isEmpty ? 'Аккаунт' : userEmail,
-                  style: const TextStyle(fontSize: 13),
+  Future<void> exportJson() async {
+    try {
+      final data = jsonEncode(cars.map((c) => c.toJson()).toList());
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/auto_profit_backup.json');
+      await file.writeAsString(data);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Резервная копия Авто Профит',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка экспорта: $e')),
+      );
+    }
+  }
+
+  Future<void> importJson() async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      final content = await File(path).readAsString();
+      final list = jsonDecode(content) as List;
+      final imported = list
+          .map((e) => Car.fromJson(e as Map<String, dynamic>))
+          .toList();
+      if (!mounted) return;
+      setState(() => cars.addAll(imported));
+      _persist();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Импортировано ${imported.length} авто')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ошибка импорта: $e')),
+      );
+    }
+  }
+      @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final theme = Theme.of(context);
+    final a = analytics;
+    final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
+    final visible = _sort(_filter(sourceList));
+    final userEmail =
+        Supabase.instance.client.auth.currentUser?.email ?? '';
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Авто Профит'),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'export') exportJson();
+              if (value == 'csv') exportCsv(cars);
+              if (value == 'import') importJson();
+              if (value == 'trash') openTrash();
+              if (value == 'history') openHistory();
+              if (value == 'logout') _logout();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'account',
+                enabled: false,
+                child: ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(
+                    userEmail.isEmpty ? 'Аккаунт' : userEmail,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  contentPadding: EdgeInsets.zero,
                 ),
-                contentPadding: EdgeInsets.zero,
               ),
-            ),
-            const PopupMenuDivider(),
-            const PopupMenuItem(
-              value: 'history',
-              child: ListTile(
-                leading: Icon(Icons.history),
-                title: Text('История покупок/продаж'),
-                contentPadding: EdgeInsets.zero,
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'history',
+                child: ListTile(
+                  leading: Icon(Icons.history),
+                  title: Text('История покупок/продаж'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'export',
-              child: ListTile(
-                leading: Icon(Icons.upload_file),
-                title: Text('Экспорт JSON'),
-                contentPadding: EdgeInsets.zero,
+              const PopupMenuItem(
+                value: 'export',
+                child: ListTile(
+                  leading: Icon(Icons.upload_file),
+                  title: Text('Экспорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'csv',
-              child: ListTile(
-                leading: Icon(Icons.table_chart),
-                title: Text('Экспорт CSV (Excel)'),
-                contentPadding: EdgeInsets.zero,
+              const PopupMenuItem(
+                value: 'csv',
+                child: ListTile(
+                  leading: Icon(Icons.table_chart),
+                  title: Text('Экспорт CSV (Excel)'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'import',
-              child: ListTile(
-                leading: Icon(Icons.download),
-                title: Text('Импорт JSON'),
-                contentPadding: EdgeInsets.zero,
+              const PopupMenuItem(
+                value: 'import',
+                child: ListTile(
+                  leading: Icon(Icons.download),
+                  title: Text('Импорт JSON'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            PopupMenuItem(
-              value: 'trash',
-              child: ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: Text('Корзина ($trashCount)'),
-                contentPadding: EdgeInsets.zero,
+              PopupMenuItem(
+                value: 'trash',
+                child: ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: Text('Корзина ($trashCount)'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            const PopupMenuDivider(),
-            const PopupMenuItem(
-              value: 'logout',
-              child: ListTile(
-                leading: Icon(Icons.logout),
-                title: Text('Выйти из аккаунта'),
-                contentPadding: EdgeInsets.zero,
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'logout',
+                child: ListTile(
+                  leading: Icon(Icons.logout),
+                  title: Text('Выйти из аккаунта'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-          ],
-        ),
-        ValueListenableBuilder<ThemeMode>(
-          valueListenable: themeNotifier,
-          builder: (context, mode, _) => IconButton(
-            tooltip: 'Тема',
-            onPressed: () => _cycleTheme(mode),
-            icon: Icon(_themeIcon(mode)),
+            ],
           ),
-        ),
-      ],
-    ),
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed: addCar,
-      icon: const Icon(Icons.add),
-      label: const Text('Добавить'),
-    ),
-    body: CustomScrollView(
-      slivers: [
-        if (showCheckReminder)
-          SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.amber.shade100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.notifications_active,
-                      color: Colors.orange),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Прошло $kReminderDays дня. Проверьте машины на складе.',
-                      style: const TextStyle(fontSize: 14),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeNotifier,
+            builder: (context, mode, _) => IconButton(
+              tooltip: 'Тема',
+              onPressed: () => _cycleTheme(mode),
+              icon: Icon(_themeIcon(mode)),
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: addCar,
+        icon: const Icon(Icons.add),
+        label: const Text('Добавить'),
+      ),
+      body: CustomScrollView(
+        slivers: [
+          if (showCheckReminder)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_active,
+                        color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Прошло $kReminderDays дня. Проверьте машины на складе.',
+                        style: const TextStyle(fontSize: 14),
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: _dismissReminder,
-                    child: const Text('Ок'),
-                  ),
-                ],
+                    TextButton(
+                      onPressed: _dismissReminder,
+                      child: const Text('Ок'),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-                    if (a.staleCars.isNotEmpty)
+          if (a.staleCars.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
                 margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
@@ -2213,6 +2342,7 @@ Widget build(BuildContext context) {
     );
   }
 }
+
 Color _statusColor(String status) {
   switch (status) {
     case 'Куплен':
@@ -2272,7 +2402,6 @@ class _ModeTab extends StatelessWidget {
     );
   }
 }
-
 class _CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
@@ -2444,6 +2573,7 @@ class _PhotoThumb extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     const size = 72.0;
+
     if (path == null || path!.isEmpty) {
       return Container(
         width: size,
@@ -2459,7 +2589,39 @@ class _PhotoThumb extends StatelessWidget {
         ),
       );
     }
-    final file = File(path!);
+
+    if (isCloudUrl(path!)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Image.network(
+            path!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: const Icon(Icons.broken_image),
+            ),
+            loadingBuilder: (_, child, progress) {
+              if (progress == null) return child;
+              return Container(
+                color: theme.colorScheme.surfaceContainerHighest,
+                child: const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    final file = File(localPathOf(path!));
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: SizedBox(
@@ -2475,6 +2637,7 @@ class _PhotoThumb extends StatelessWidget {
     );
   }
 }
+
 class _AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -2559,7 +2722,6 @@ class _AutocompleteField extends StatelessWidget {
     );
   }
 }
-
 class CarFormScreen extends StatefulWidget {
   final Car? car;
   final void Function(Car car) onSave;
@@ -2779,7 +2941,8 @@ class _CarFormScreenState extends State<CarFormScreen> {
       ),
     );
   }
-      @override
+
+  @override
   Widget build(BuildContext context) {
     final allTagOptions = <String>{
       ...kTagSuggestions,
@@ -2919,7 +3082,6 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
@@ -3415,18 +3577,34 @@ class _PhotosBlock extends StatelessWidget {
       'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
     );
     await File(picked.path).copy(newPath);
-    car.photos.add(newPath);
+    car.photos.add('local:$newPath');
     onChanged();
   }
 
   Future<void> _removePhoto(int index) async {
     final path = car.photos[index];
-    try {
-      final f = File(path);
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
+    if (!isCloudUrl(path)) {
+      try {
+        final f = File(localPathOf(path));
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
     car.photos.removeAt(index);
     onChanged();
+  }
+
+  void _openPhoto(BuildContext context, String path) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: InteractiveViewer(
+          child: isCloudUrl(path)
+              ? Image.network(path)
+              : Image.file(File(localPathOf(path))),
+        ),
+      ),
+    );
   }
 
   @override
@@ -3467,21 +3645,39 @@ class _PhotosBlock extends StatelessWidget {
                   separatorBuilder: (_, __) =>
                       const SizedBox(width: 8),
                   itemBuilder: (context, index) {
-                    final file = File(car.photos[index]);
+                    final path = car.photos[index];
                     return Stack(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: SizedBox(
-                            width: 110,
-                            height: 110,
-                            child: file.existsSync()
-                                ? Image.file(file, fit: BoxFit.cover)
-                                : Container(
-                                    color: Colors.black12,
-                                    child: const Icon(
-                                        Icons.broken_image),
-                                  ),
+                        InkWell(
+                          onTap: () => _openPhoto(context, path),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox(
+                              width: 110,
+                              height: 110,
+                              child: isCloudUrl(path)
+                                  ? Image.network(
+                                      path,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          Container(
+                                        color: Colors.black12,
+                                        child: const Icon(
+                                            Icons.broken_image),
+                                      ),
+                                    )
+                                  : (File(localPathOf(path))
+                                          .existsSync()
+                                      ? Image.file(
+                                          File(localPathOf(path)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Container(
+                                          color: Colors.black12,
+                                          child: const Icon(
+                                              Icons.broken_image),
+                                        )),
+                            ),
                           ),
                         ),
                         Positioned(
@@ -3511,6 +3707,652 @@ class _PhotosBlock extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DocumentsBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _DocumentsBlock({required this.car, required this.onChanged});
+
+  IconData _icon(String type) {
+    if (type == 'image') return Icons.image;
+    if (type == 'pdf') return Icons.picture_as_pdf;
+    return Icons.description;
+  }
+
+  Future<void> _pick(BuildContext context, String source) async {
+    String? srcPath;
+    String name = '';
+    String type = 'other';
+
+    if (source == 'camera' || source == 'gallery') {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source == 'camera'
+            ? ImageSource.camera
+            : ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 2000,
+      );
+      if (picked == null) return;
+      srcPath = picked.path;
+      name = p.basename(picked.path);
+      type = 'image';
+    } else {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null) return;
+      srcPath = result.files.single.path;
+      if (srcPath == null) return;
+      name = result.files.single.name;
+      final ext = p.extension(name).toLowerCase();
+      if (ext == '.pdf') {
+        type = 'pdf';
+      } else if ([
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.gif',
+        '.webp',
+        '.heic'
+      ].contains(ext)) {
+        type = 'image';
+      } else {
+        type = 'other';
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final docsDir = Directory(p.join(dir.path, 'documents'));
+    if (!await docsDir.exists()) await docsDir.create(recursive: true);
+    final newPath = p.join(
+      docsDir.path,
+      'doc_${DateTime.now().microsecondsSinceEpoch}'
+      '${p.extension(srcPath)}',
+    );
+    await File(srcPath).copy(newPath);
+
+    car.attachments.add(
+      Attachment(
+        id: newId(),
+        name: name,
+        path: 'local:$newPath',
+        type: type,
+        addedAt: todayIso(),
+      ),
+    );
+    onChanged();
+  }
+
+  Future<void> _open(BuildContext context, Attachment a) async {
+    final path = a.path;
+    if (isCloudUrl(path)) {
+      final uri = Uri.parse(path);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+    final file = File(localPathOf(path));
+    if (!await file.exists()) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Файл не найден')),
+      );
+      return;
+    }
+    if (a.type == 'image') {
+      if (!context.mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: InteractiveViewer(child: Image.file(file)),
+        ),
+      );
+    } else {
+      try {
+        await OpenFilex.open(file.path);
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось открыть: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _remove(Attachment a) async {
+    if (!isCloudUrl(a.path)) {
+      try {
+        final f = File(localPathOf(a.path));
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    car.attachments.removeWhere((x) => x.id == a.id);
+    onChanged();
+  }
+
+  void _showAddMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Сфотографировать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'camera');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Из галереи'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'gallery');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('Выбрать файл (PDF, DOCX…)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'files');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Документы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _showAddMenu(context),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.attachments.isEmpty)
+              const Text('Документов пока нет')
+            else
+              ...car.attachments.map(
+                (a) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _icon(a.type),
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(a.addedAt),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _remove(a),
+                  ),
+                  onTap: () => _open(context, a),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+class _ExpensesBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _ExpensesBlock({required this.car, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Расходы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    onChanged: onChanged,
+                  ),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.expenses.isEmpty)
+              const Text('Расходов пока нет')
+            else
+              ...car.expenses.map(
+                (expense) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt_long),
+                  title: Text(expense.category),
+                  subtitle: Text(
+                    expense.note.isEmpty
+                        ? 'Нажмите, чтобы изменить'
+                        : expense.note,
+                  ),
+                  trailing: Text(
+                    money(expense.amount),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    expense: expense,
+                    onChanged: onChanged,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showExpenseDialog({
+  required BuildContext context,
+  required Car car,
+  Expense? expense,
+  required VoidCallback onChanged,
+}) async {
+  final amount = TextEditingController(
+    text: expense != null ? expense.amount.toStringAsFixed(0) : '',
+  );
+  final note = TextEditingController(text: expense?.note ?? '');
+  String category = expense?.category ?? kExpenseCategories.first;
+
+  await showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return StatefulBuilder(
+        builder: (context, setLocal) {
+          return AlertDialog(
+            title: Text(
+              expense == null ? 'Добавить расход' : 'Изменить расход',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: const InputDecoration(
+                      labelText: 'Категория',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: kExpenseCategories
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setLocal(() => category = v);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amount,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Сумма',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: note,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Комментарий',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (expense != null)
+                TextButton(
+                  onPressed: () {
+                    car.expenses.removeWhere((e) => e.id == expense.id);
+                    onChanged();
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text(
+                    'Удалить',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = double.tryParse(
+                        amount.text.replaceAll(',', '.'),
+                      ) ??
+                      0;
+                  if (value <= 0) return;
+                  if (expense == null) {
+                    car.expenses.add(
+                      Expense(
+                        id: newId(),
+                        category: category,
+                        amount: value,
+                        note: note.text.trim(),
+                      ),
+                    );
+                  } else {
+                    expense.category = category;
+                    expense.amount = value;
+                    expense.note = note.text.trim();
+                  }
+                  onChanged();
+                  Navigator.pop(dialogContext);
+                },
+                child:
+                    Text(expense == null ? 'Добавить' : 'Сохранить'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
+class TrashScreen extends StatefulWidget {
+  final void Function(Car) onRestore;
+
+  const TrashScreen({super.key, required this.onRestore});
+
+  @override
+  State<TrashScreen> createState() => _TrashScreenState();
+}
+
+class _TrashScreenState extends State<TrashScreen> {
+  List<TrashEntry> trash = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final data = await Storage.loadTrash();
+    if (!mounted) return;
+    setState(() {
+      trash = data;
+      loading = false;
+    });
+  }
+
+  Future<void> _restore(TrashEntry t) async {
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    widget.onRestore(t.car);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Автомобиль восстановлен')),
+    );
+  }
+
+  Future<void> _deleteForever(TrashEntry t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить навсегда?'),
+        content: const Text(
+          'Автомобиль и все связанные файлы будут удалены без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final path in t.car.photos) {
+      if (isCloudUrl(path)) continue;
+      try {
+        final f = File(localPathOf(path));
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    for (final a in t.car.attachments) {
+      if (isCloudUrl(a.path)) continue;
+      try {
+        final f = File(localPathOf(a.path));
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Корзина (${trash.length})'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : trash.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text(
+                      'Корзина пуста',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: trash.length,
+                  itemBuilder: (context, index) {
+                    final t = trash[index];
+                    final car = t.car;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${car.make} ${car.model}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Удалён: ${t.deletedAt}'
+                              ' • осталось ${t.daysLeft} дн.',
+                              style:
+                                  Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _restore(t),
+                                    icon: const Icon(Icons.restore),
+                                    label: const Text('Восстановить'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () => _deleteForever(t),
+                                  icon: const Icon(
+                                    Icons.delete_forever,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+class HistoryEvent {
+  final DateTime date;
+  final String type;
+  final Car car;
+  final double amount;
+  HistoryEvent({
+    required this.date,
+    required this.type,
+    required this.car,
+    required this.amount,
+  });
+}
+
+class HistoryScreen extends StatelessWidget {
+  final List<Car> cars;
+  const HistoryScreen({super.key, required this.cars});
+
+  List<HistoryEvent> _events() {
+    final list = <HistoryEvent>[];
+    for (final c in cars) {
+      final pd = c.purchaseDateTime;
+      if (pd != null) {
+        list.add(HistoryEvent(
+          date: pd,
+          type: 'Покупка',
+          car: c,
+          amount: c.purchase,
+        ));
+      }
+      final sd = c.saleDateTime;
+      if (sd != null) {
+        list.add(HistoryEvent(
+          date: sd,
+          type: 'Продажа',
+          car: c,
+          amount: c.sale,
+        ));
+      }
+    }
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _events();
+    return Scaffold(
+      appBar: AppBar(title: const Text('История покупок и продаж')),
+      body: events.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Пока нет ни покупок, ни продаж',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: events.length,
+              itemBuilder: (context, index) {
+                final e = events[index];
+                final isBuy = e.type == 'Покупка';
+                final color = isBuy ? Colors.blue : Colors.green;
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      child: Icon(
+                        isBuy ? Icons.shopping_cart : Icons.sell,
+                        color: color,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '${e.type}: ${e.car.make} ${e.car.model}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${formatDate(e.date)} • ${money(e.amount)}',
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }
@@ -3762,640 +4604,6 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
-class _DocumentsBlock extends StatelessWidget {
-  final Car car;
-  final VoidCallback onChanged;
-
-  const _DocumentsBlock({required this.car, required this.onChanged});
-
-  IconData _icon(String type) {
-    if (type == 'image') return Icons.image;
-    if (type == 'pdf') return Icons.picture_as_pdf;
-    return Icons.description;
-  }
-
-  Future<void> _pick(BuildContext context, String source) async {
-    String? srcPath;
-    String name = '';
-    String type = 'other';
-
-    if (source == 'camera' || source == 'gallery') {
-      final picker = ImagePicker();
-      final picked = await picker.pickImage(
-        source: source == 'camera'
-            ? ImageSource.camera
-            : ImageSource.gallery,
-        imageQuality: 80,
-        maxWidth: 2000,
-      );
-      if (picked == null) return;
-      srcPath = picked.path;
-      name = p.basename(picked.path);
-      type = 'image';
-    } else {
-      final result = await FilePicker.platform.pickFiles();
-      if (result == null) return;
-      srcPath = result.files.single.path;
-      if (srcPath == null) return;
-      name = result.files.single.name;
-      final ext = p.extension(name).toLowerCase();
-      if (ext == '.pdf') {
-        type = 'pdf';
-      } else if ([
-        '.jpg',
-        '.jpeg',
-        '.png',
-        '.gif',
-        '.webp',
-        '.heic'
-      ].contains(ext)) {
-        type = 'image';
-      } else {
-        type = 'other';
-      }
-    }
-
-    final dir = await getApplicationDocumentsDirectory();
-    final docsDir = Directory(p.join(dir.path, 'documents'));
-    if (!await docsDir.exists()) await docsDir.create(recursive: true);
-    final newPath = p.join(
-      docsDir.path,
-      'doc_${DateTime.now().microsecondsSinceEpoch}'
-      '${p.extension(srcPath)}',
-    );
-    await File(srcPath).copy(newPath);
-
-    car.attachments.add(
-      Attachment(
-        id: newId(),
-        name: name,
-        path: newPath,
-        type: type,
-        addedAt: todayIso(),
-      ),
-    );
-    onChanged();
-  }
-
-  Future<void> _open(BuildContext context, Attachment a) async {
-    final file = File(a.path);
-    if (!await file.exists()) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Файл не найден')),
-      );
-      return;
-    }
-    if (a.type == 'image') {
-      if (!context.mounted) return;
-      await showDialog(
-        context: context,
-        builder: (_) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: InteractiveViewer(child: Image.file(file)),
-        ),
-      );
-    } else {
-      try {
-        await OpenFilex.open(a.path);
-      } catch (e) {
-        if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось открыть: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _remove(Attachment a) async {
-    try {
-      final f = File(a.path);
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
-    car.attachments.removeWhere((x) => x.id == a.id);
-    onChanged();
-  }
-
-  void _showAddMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Сфотографировать'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pick(context, 'camera');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Из галереи'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pick(context, 'gallery');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.attach_file),
-              title: const Text('Выбрать файл (PDF, DOCX…)'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pick(context, 'files');
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Документы',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => _showAddMenu(context),
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-            if (car.attachments.isEmpty)
-              const Text('Документов пока нет')
-            else
-              ...car.attachments.map(
-                (a) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    _icon(a.type),
-                    color: theme.colorScheme.primary,
-                  ),
-                  title: Text(
-                    a.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(a.addedAt),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _remove(a),
-                  ),
-                  onTap: () => _open(context, a),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExpensesBlock extends StatelessWidget {
-  final Car car;
-  final VoidCallback onChanged;
-
-  const _ExpensesBlock({required this.car, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Расходы',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => showExpenseDialog(
-                    context: context,
-                    car: car,
-                    onChanged: onChanged,
-                  ),
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-            if (car.expenses.isEmpty)
-              const Text('Расходов пока нет')
-            else
-              ...car.expenses.map(
-                (expense) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.receipt_long),
-                  title: Text(expense.category),
-                  subtitle: Text(
-                    expense.note.isEmpty
-                        ? 'Нажмите, чтобы изменить'
-                        : expense.note,
-                  ),
-                  trailing: Text(
-                    money(expense.amount),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  onTap: () => showExpenseDialog(
-                    context: context,
-                    car: car,
-                    expense: expense,
-                    onChanged: onChanged,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-Future<void> showExpenseDialog({
-  required BuildContext context,
-  required Car car,
-  Expense? expense,
-  required VoidCallback onChanged,
-}) async {
-  final amount = TextEditingController(
-    text: expense != null ? expense.amount.toStringAsFixed(0) : '',
-  );
-  final note = TextEditingController(text: expense?.note ?? '');
-  String category = expense?.category ?? kExpenseCategories.first;
-
-  await showDialog(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(
-        builder: (context, setLocal) {
-          return AlertDialog(
-            title: Text(
-              expense == null ? 'Добавить расход' : 'Изменить расход',
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    initialValue: category,
-                    decoration: const InputDecoration(
-                      labelText: 'Категория',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: kExpenseCategories
-                        .map((c) => DropdownMenuItem(
-                              value: c,
-                              child: Text(c),
-                            ))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) setLocal(() => category = v);
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: amount,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Сумма',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: note,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Комментарий',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              if (expense != null)
-                TextButton(
-                  onPressed: () {
-                    car.expenses.removeWhere((e) => e.id == expense.id);
-                    onChanged();
-                    Navigator.pop(dialogContext);
-                  },
-                  child: const Text(
-                    'Удалить',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Отмена'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  final value = double.tryParse(
-                        amount.text.replaceAll(',', '.'),
-                      ) ??
-                      0;
-                  if (value <= 0) return;
-                  if (expense == null) {
-                    car.expenses.add(
-                      Expense(
-                        id: newId(),
-                        category: category,
-                        amount: value,
-                        note: note.text.trim(),
-                      ),
-                    );
-                  } else {
-                    expense.category = category;
-                    expense.amount = value;
-                    expense.note = note.text.trim();
-                  }
-                  onChanged();
-                  Navigator.pop(dialogContext);
-                },
-                child:
-                    Text(expense == null ? 'Добавить' : 'Сохранить'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-}
-
-class TrashScreen extends StatefulWidget {
-  final void Function(Car) onRestore;
-
-  const TrashScreen({super.key, required this.onRestore});
-
-  @override
-  State<TrashScreen> createState() => _TrashScreenState();
-}
-
-class _TrashScreenState extends State<TrashScreen> {
-  List<TrashEntry> trash = [];
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final data = await Storage.loadTrash();
-    if (!mounted) return;
-    setState(() {
-      trash = data;
-      loading = false;
-    });
-  }
-
-  Future<void> _restore(TrashEntry t) async {
-    trash.removeWhere((x) => x.car.id == t.car.id);
-    await Storage.saveTrash(trash);
-    widget.onRestore(t.car);
-    if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Автомобиль восстановлен')),
-    );
-  }
-
-  Future<void> _deleteForever(TrashEntry t) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить навсегда?'),
-        content: const Text(
-          'Автомобиль и все связанные файлы будут удалены без возможности восстановления.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    for (final path in t.car.photos) {
-      try {
-        final f = File(path);
-        if (await f.exists()) await f.delete();
-      } catch (_) {}
-    }
-    for (final a in t.car.attachments) {
-      try {
-        final f = File(a.path);
-        if (await f.exists()) await f.delete();
-      } catch (_) {}
-    }
-    trash.removeWhere((x) => x.car.id == t.car.id);
-    await Storage.saveTrash(trash);
-    if (!mounted) return;
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Корзина (${trash.length})'),
-      ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator())
-          : trash.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      'Корзина пуста',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: trash.length,
-                  itemBuilder: (context, index) {
-                    final t = trash[index];
-                    final car = t.car;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${car.make} ${car.model}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Удалён: ${t.deletedAt}'
-                              ' • осталось ${t.daysLeft} дн.',
-                              style:
-                                  Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _restore(t),
-                                    icon: const Icon(Icons.restore),
-                                    label: const Text('Восстановить'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: () => _deleteForever(t),
-                                  icon: const Icon(
-                                    Icons.delete_forever,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-    );
-  }
-}
-class HistoryEvent {
-  final DateTime date;
-  final String type;
-  final Car car;
-  final double amount;
-  HistoryEvent({
-    required this.date,
-    required this.type,
-    required this.car,
-    required this.amount,
-  });
-}
-
-class HistoryScreen extends StatelessWidget {
-  final List<Car> cars;
-  const HistoryScreen({super.key, required this.cars});
-
-  List<HistoryEvent> _events() {
-    final list = <HistoryEvent>[];
-    for (final c in cars) {
-      final pd = c.purchaseDateTime;
-      if (pd != null) {
-        list.add(HistoryEvent(
-          date: pd,
-          type: 'Покупка',
-          car: c,
-          amount: c.purchase,
-        ));
-      }
-      final sd = c.saleDateTime;
-      if (sd != null) {
-        list.add(HistoryEvent(
-          date: sd,
-          type: 'Продажа',
-          car: c,
-          amount: c.sale,
-        ));
-      }
-    }
-    list.sort((a, b) => b.date.compareTo(a.date));
-    return list;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final events = _events();
-    return Scaffold(
-      appBar: AppBar(title: const Text('История покупок и продаж')),
-      body: events.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Пока нет ни покупок, ни продаж',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: events.length,
-              itemBuilder: (context, index) {
-                final e = events[index];
-                final isBuy = e.type == 'Покупка';
-                final color = isBuy ? Colors.blue : Colors.green;
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: color.withValues(alpha: 0.15),
-                      child: Icon(
-                        isBuy ? Icons.shopping_cart : Icons.sell,
-                        color: color,
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      '${e.type}: ${e.car.make} ${e.car.model}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${formatDate(e.date)} • ${money(e.amount)}',
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-}
-
 class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
