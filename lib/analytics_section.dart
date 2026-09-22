@@ -24,85 +24,9 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.38,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          children: [
-            KpiCard(
-              title: 'Прибыль всего',
-              value: moneyShort(a.totalProfit),
-              subtitle:
-                  '${a.soldAllTimeCount} ${carsLabel(a.soldAllTimeCount)}',
-              icon: Icons.trending_up,
-              color: a.totalProfit >= 0
-                  ? const Color(0xFF10B981)
-                  : const Color(0xFFEF4444),
-              highlight: true,
-            ),
-            KpiCard(
-              title: 'Прибыль за месяц',
-              value: moneyShort(a.profitThisMonth),
-              subtitle: '${a.soldThisMonthCount} за месяц',
-              icon: Icons.calendar_today_outlined,
-              color: const Color(0xFF4A4FC7),
-            ),
-            KpiCard(
-              title: 'В наличии',
-              value: '${a.stockCars.length}',
-              subtitle: moneyShort(a.totalInvestedStock),
-              icon: Icons.directions_car_filled_outlined,
-              color: const Color(0xFFFF7A45),
-            ),
-            KpiCard(
-              title: 'Доля партнёра',
-              value: a.partnerCarsCountStock == 0
-                  ? '—'
-                  : moneyShort(a.totalPartnerStock),
-              subtitle: a.partnerCarsCountStock == 0
-                  ? 'нигде не указана'
-                  : 'в ${a.partnerCarsCountStock} '
-                      '${carsLabel(a.partnerCarsCountStock)}',
-              icon: Icons.handshake_outlined,
-              color: const Color(0xFF9B5DE5),
-            ),
-            KpiCard(
-              title: 'Прибыль партнёра',
-              value: a.partnerProfitShare == 0
-                  ? '—'
-                  : moneyShort(a.partnerProfitShare),
-              subtitle: 'Вам: ${moneyShort(a.myProfitShare)}',
-              icon: Icons.account_balance_outlined,
-              color: const Color(0xFF06B6D4),
-            ),
-            KpiCard(
-              title: 'Рентабельность',
-              value: a.soldCars.isEmpty
-                  ? '—'
-                  : '${a.profitability.toStringAsFixed(1)}%',
-              subtitle: 'прибыль / вложено',
-              icon: Icons.percent,
-              color: const Color(0xFFEC4899),
-            ),
-            KpiCard(
-              title: 'Средняя за месяц',
-              value: moneyShort(a.averageProfitThisMonth),
-              subtitle: 'с машины в этом месяце',
-              icon: Icons.calculate_outlined,
-              color: const Color(0xFF0EA5E9),
-            ),
-            KpiCard(
-              title: 'Средняя всего',
-              value: moneyShort(a.averageProfit),
-              subtitle: 'с машины за всё время',
-              icon: Icons.attach_money,
-              color: const Color(0xFF8B5CF6),
-            ),
-          ],
-        ),
+        _buildMainProfitCard(a),
+        const SizedBox(height: 10),
+        _buildGrid(a),
         const SizedBox(height: 12),
         Material(
           color: Colors.transparent,
@@ -217,6 +141,10 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
                       : const Color(0xFFEF4444),
                 ),
                 DetailRow(
+                  label: 'Прибыль за прошлый месяц',
+                  value: money(a.profitPrevMonth),
+                ),
+                DetailRow(
                   label: 'Прибыль за всё время',
                   value: money(a.totalProfit),
                   valueColor: a.totalProfit >= 0
@@ -287,168 +215,168 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
             ),
           ),
           const SectionTitle(
-            text: 'Статистика по маркам',
-            icon: Icons.bar_chart_rounded,
+  text: 'Статистика по маркам',
+  icon: Icons.bar_chart_rounded,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      if (a.brandStats.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            'Пока нет проданных машин',
+            style: TextStyle(color: Colors.grey),
           ),
-          PaddedCard(
+        )
+      else
+        ...a.brandStats.take(8).map((b) {
+          final isPositive = b.totalProfit >= 0;
+          final daysStr = '${b.avgDays.toStringAsFixed(0)} дн.';
+          final cntStr = '${b.count} шт.';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (a.brandStats.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Пока нет проданных машин',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                else
-                  ...a.brandStats.take(8).map((b) {
-                    final isPositive = b.totalProfit >= 0;
-                    final daysStr = '${b.avgDays.toStringAsFixed(0)} дн.';
-                    final cntStr = '${b.count} шт.';
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  b.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.10),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  cntStr,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Прибыль: ${money(b.totalProfit)}',
-                                style: TextStyle(
-                                  color: isPositive
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFEF4444),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                              Text(
-                                'Ср. срок: $daysStr',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 14),
-                        ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        b.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
                       ),
-                    );
-                  }),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        cntStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Прибыль: ${money(b.totalProfit)}',
+                      style: TextStyle(
+                        color: isPositive
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFEF4444),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    Text(
+                      'Ср. срок: $daysStr',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 14),
               ],
             ),
-          ),
-          const SectionTitle(
-            text: 'Потенциал склада',
-            icon: Icons.lightbulb_outline,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                DetailRow(
-                  label: 'Вложено в наличие',
-                  value: money(a.totalInvestedStock),
-                  valueColor: const Color(0xFFFF7A45),
-                ),
-                DetailRow(
-                  label: 'Средняя маржа по проданным',
-                  value: '${a.profitability.toStringAsFixed(1)}%',
-                  valueColor: const Color(0xFF06B6D4),
-                ),
-                const Divider(),
-                DetailRow(
-                  label: 'Прогноз прибыли со склада',
-                  value: money(a.potentialProfit),
-                  valueColor: const Color(0xFF10B981),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Прогноз основан на средней рентабельности прошлых продаж.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SectionTitle(
-            text: 'Средние показатели',
-            icon: Icons.analytics_outlined,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                DetailRow(
-                  label: 'Средняя цена закупки',
-                  value: money(a.averagePurchase),
-                ),
-                DetailRow(
-                  label: 'Средняя цена продажи',
-                  value: money(a.averageSalePrice),
-                ),
-                DetailRow(
-                  label: 'Средняя прибыль за месяц',
-                  value: money(a.averageProfitThisMonth),
-                ),
-                DetailRow(
-                  label: 'Средняя прибыль за всё время',
-                  value: money(a.averageProfit),
-                ),
-                DetailRow(
-                  label: 'Средние вложения в машину',
-                  value: money(a.averageInvestment),
-                ),
-                DetailRow(
-                  label: 'Средний срок продажи',
-                  value: a.soldCars.isEmpty
-                      ? '—'
-                      : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
-                ),
-              ],
-            ),
-          ),
-          const SectionTitle(
+          );
+        }),
+    ],
+  ),
+),
+const SectionTitle(
+  text: 'Потенциал склада',
+  icon: Icons.lightbulb_outline,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      DetailRow(
+        label: 'Вложено в наличие',
+        value: money(a.totalInvestedStock),
+        valueColor: const Color(0xFFFF7A45),
+      ),
+      DetailRow(
+        label: 'Средняя маржа по проданным',
+        value: '${a.avgMarginAllPercent.toStringAsFixed(1)}%',
+        valueColor: const Color(0xFF06B6D4),
+      ),
+      const Divider(),
+      DetailRow(
+        label: 'Прогноз прибыли со склада',
+        value: money(a.potentialProfit),
+        valueColor: const Color(0xFF10B981),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'Прогноз основан на средней рентабельности прошлых продаж.',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+      ),
+    ],
+  ),
+),
+const SectionTitle(
+  text: 'Средние показатели',
+  icon: Icons.analytics_outlined,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      DetailRow(
+        label: 'Средняя цена закупки',
+        value: money(a.averagePurchase),
+      ),
+      DetailRow(
+        label: 'Средняя цена продажи',
+        value: money(a.averageSalePrice),
+      ),
+      DetailRow(
+        label: 'Средняя прибыль за месяц',
+        value: money(a.averageProfitThisMonth),
+      ),
+      DetailRow(
+        label: 'Средняя прибыль за всё время',
+        value: money(a.averageProfit),
+      ),
+      DetailRow(
+        label: 'Средние вложения в машину',
+        value: money(a.averageInvestment),
+      ),
+      DetailRow(
+        label: 'Средний срок продажи',
+        value: a.soldCars.isEmpty
+            ? '—'
+            : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
+      ),
+    ],
+  ),
+),
+                    const SectionTitle(
             text: 'Топ-5 расходов',
             icon: Icons.local_gas_station_outlined,
           ),
@@ -468,6 +396,108 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
           BestWorstCard(best: a.bestCar, worst: a.worstCar),
           const SizedBox(height: 12),
         ],
+      ],
+    );
+  }
+
+  Widget _buildMainProfitCard(Analytics a) {
+    final trendPercent = a.trendPercent;
+    final trendDiff = a.trendDiff;
+
+    String? trendText;
+    bool? trendPositive;
+
+    if (a.soldPrevMonth.isEmpty && a.soldThisMonthCount > 0) {
+      trendText = '${a.soldThisMonthCount} '
+          '${carsLabel(a.soldThisMonthCount)}';
+      trendPositive = true;
+    } else if (a.soldPrevMonth.isNotEmpty) {
+      final sign = trendDiff >= 0 ? '+' : '−';
+      final diffAbs = trendDiff.abs();
+      final pctAbs = trendPercent == null ? 0 : trendPercent.abs();
+      trendText =
+          '$sign${pctAbs.toStringAsFixed(0)}% ($sign${moneyShort(diffAbs)})';
+      trendPositive = trendDiff >= 0;
+    }
+
+    final marginPct = a.avgMarginThisMonthPercent;
+    final marginText = a.soldThisMonthCount == 0
+        ? null
+        : 'Средняя маржа: ${moneyShort(a.averageProfitThisMonth)} '
+            '(${marginPct.toStringAsFixed(0)}%)';
+
+    return WideKpiCard(
+      title: 'ПРИБЫЛЬ ЗА МЕСЯЦ',
+      value: money(a.profitThisMonth),
+      subtitle: a.soldThisMonthCount == 0
+          ? 'В этом месяце ещё нет продаж'
+          : '${a.soldThisMonthCount} '
+              '${carsLabel(a.soldThisMonthCount)} продано',
+      trendText: trendText,
+      trendPositive: trendPositive,
+      marginText: marginText,
+      icon: Icons.savings_outlined,
+      gradient: const [
+        Color(0xFF4A4FC7),
+        Color(0xFF6D72E0),
+      ],
+    );
+  }
+
+  Widget _buildGrid(Analytics a) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 1.38,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      children: [
+        KpiCard(
+          title: 'В наличии',
+          value: '${a.stockCars.length}',
+          subtitle: a.staleCountStock == 0
+              ? 'все в работе'
+              : '${a.staleCountStock} залежались',
+          icon: Icons.directions_car_filled_outlined,
+          color: const Color(0xFFFF7A45),
+        ),
+        KpiCard(
+          title: 'Вложено',
+          value: moneyShort(a.totalInvestedStock),
+          subtitle: 'закуп + расходы',
+          icon: Icons.account_balance_wallet_outlined,
+          color: const Color(0xFF0EA5E9),
+        ),
+        if (a.partnerCarsCount > 0)
+          KpiCard(
+            title: 'Партнёр',
+            value: 'Вам: ${moneyShort(a.myProfitShare)}',
+            subtitle: 'Ему: ${moneyShort(a.partnerProfitShare)}',
+            icon: Icons.handshake_outlined,
+            color: const Color(0xFF9B5DE5),
+          )
+        else
+          KpiCard(
+            title: 'Средний срок',
+            value: a.soldCars.isEmpty
+                ? '—'
+                : '${a.averageDaysToSell.toStringAsFixed(0)} дн.',
+            subtitle: 'от покупки до продажи',
+            icon: Icons.schedule_outlined,
+            color: const Color(0xFF9B5DE5),
+          ),
+        KpiCard(
+          title: 'Прибыль всего',
+          value: moneyShort(a.totalProfit),
+          subtitle:
+              '${a.soldAllTimeCount} ${carsLabel(a.soldAllTimeCount)} · '
+              'ср. ${a.avgMarginAllPercent.toStringAsFixed(0)}%',
+          icon: Icons.trending_up,
+          color: a.totalProfit >= 0
+              ? const Color(0xFF10B981)
+              : const Color(0xFFEF4444),
+        ),
       ],
     );
   }
