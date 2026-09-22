@@ -26,6 +26,15 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name auto_profit
 
+      - name: Add INTERNET permission to AndroidManifest
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if ! grep -q 'android.permission.INTERNET' $MANIFEST; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' $MANIFEST
+          fi
+          echo "--- Содержимое манифеста ---"
+          grep -E 'uses-permission|application' $MANIFEST | head -5
+
       - name: Decode Keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/upload-keystore.jks
