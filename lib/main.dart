@@ -3672,3 +3672,1047 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
+class _DocumentsBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _DocumentsBlock({required this.car, required this.onChanged});
+
+  IconData _icon(String type) {
+    if (type == 'image') return Icons.image;
+    if (type == 'pdf') return Icons.picture_as_pdf;
+    return Icons.description;
+  }
+
+  Future<void> _pick(BuildContext context, String source) async {
+    String? srcPath;
+    String name = '';
+    String type = 'other';
+
+    if (source == 'camera' || source == 'gallery') {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: source == 'camera'
+            ? ImageSource.camera
+            : ImageSource.gallery,
+        imageQuality: 80,
+        maxWidth: 2000,
+      );
+      if (picked == null) return;
+      srcPath = picked.path;
+      name = p.basename(picked.path);
+      type = 'image';
+    } else {
+      final result = await FilePicker.platform.pickFiles();
+      if (result == null) return;
+      srcPath = result.files.single.path;
+      if (srcPath == null) return;
+      name = result.files.single.name;
+      final ext = p.extension(name).toLowerCase();
+      if (ext == '.pdf') {
+        type = 'pdf';
+      } else if ([
+        '.jpg',
+        '.jpeg',
+        '.png',
+        '.gif',
+        '.webp',
+        '.heic'
+      ].contains(ext)) {
+        type = 'image';
+      } else {
+        type = 'other';
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final docsDir = Directory(p.join(dir.path, 'documents'));
+    if (!await docsDir.exists()) await docsDir.create(recursive: true);
+    final newPath = p.join(
+      docsDir.path,
+      'doc_${DateTime.now().microsecondsSinceEpoch}'
+      '${p.extension(srcPath)}',
+    );
+    await File(srcPath).copy(newPath);
+
+    car.attachments.add(
+      Attachment(
+        id: newId(),
+        name: name,
+        path: newPath,
+        type: type,
+        addedAt: todayIso(),
+      ),
+    );
+    onChanged();
+  }
+
+  Future<void> _open(BuildContext context, Attachment a) async {
+    final file = File(a.path);
+    if (!await file.exists()) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Файл не найден')),
+      );
+      return;
+    }
+    if (a.type == 'image') {
+      if (!context.mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: InteractiveViewer(child: Image.file(file)),
+        ),
+      );
+    } else {
+      try {
+        await OpenFilex.open(a.path);
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось открыть: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _remove(Attachment a) async {
+    try {
+      final f = File(a.path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    car.attachments.removeWhere((x) => x.id == a.id);
+    onChanged();
+  }
+
+  void _showAddMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Сфотографировать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'camera');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Из галереи'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'gallery');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_file),
+              title: const Text('Выбрать файл (PDF, DOCX…)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pick(context, 'files');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Документы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _showAddMenu(context),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.attachments.isEmpty)
+              const Text('Документов пока нет')
+            else
+              ...car.attachments.map(
+                (a) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    _icon(a.type),
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(a.addedAt),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () => _remove(a),
+                  ),
+                  onTap: () => _open(context, a),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpensesBlock extends StatelessWidget {
+  final Car car;
+  final VoidCallback onChanged;
+
+  const _ExpensesBlock({required this.car, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Расходы',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    onChanged: onChanged,
+                  ),
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            if (car.expenses.isEmpty)
+              const Text('Расходов пока нет')
+            else
+              ...car.expenses.map(
+                (expense) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt_long),
+                  title: Text(expense.category),
+                  subtitle: Text(
+                    expense.note.isEmpty
+                        ? 'Нажмите, чтобы изменить'
+                        : expense.note,
+                  ),
+                  trailing: Text(
+                    money(expense.amount),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () => showExpenseDialog(
+                    context: context,
+                    car: car,
+                    expense: expense,
+                    onChanged: onChanged,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showExpenseDialog({
+  required BuildContext context,
+  required Car car,
+  Expense? expense,
+  required VoidCallback onChanged,
+}) async {
+  final amount = TextEditingController(
+    text: expense != null ? expense.amount.toStringAsFixed(0) : '',
+  );
+  final note = TextEditingController(text: expense?.note ?? '');
+  String category = expense?.category ?? kExpenseCategories.first;
+
+  await showDialog(
+    context: context,
+    builder: (dialogContext) {
+      return StatefulBuilder(
+        builder: (context, setLocal) {
+          return AlertDialog(
+            title: Text(
+              expense == null ? 'Добавить расход' : 'Изменить расход',
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: const InputDecoration(
+                      labelText: 'Категория',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: kExpenseCategories
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setLocal(() => category = v);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: amount,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Сумма',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: note,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Комментарий',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              if (expense != null)
+                TextButton(
+                  onPressed: () {
+                    car.expenses.removeWhere((e) => e.id == expense.id);
+                    onChanged();
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text(
+                    'Удалить',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = double.tryParse(
+                        amount.text.replaceAll(',', '.'),
+                      ) ??
+                      0;
+                  if (value <= 0) return;
+                  if (expense == null) {
+                    car.expenses.add(
+                      Expense(
+                        id: newId(),
+                        category: category,
+                        amount: value,
+                        note: note.text.trim(),
+                      ),
+                    );
+                  } else {
+                    expense.category = category;
+                    expense.amount = value;
+                    expense.note = note.text.trim();
+                  }
+                  onChanged();
+                  Navigator.pop(dialogContext);
+                },
+                child:
+                    Text(expense == null ? 'Добавить' : 'Сохранить'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+class TrashScreen extends StatefulWidget {
+  final void Function(Car) onRestore;
+
+  const TrashScreen({super.key, required this.onRestore});
+
+  @override
+  State<TrashScreen> createState() => _TrashScreenState();
+}
+
+class _TrashScreenState extends State<TrashScreen> {
+  List<TrashEntry> trash = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final data = await Storage.loadTrash();
+    if (!mounted) return;
+    setState(() {
+      trash = data;
+      loading = false;
+    });
+  }
+
+  Future<void> _restore(TrashEntry t) async {
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    widget.onRestore(t.car);
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Автомобиль восстановлен')),
+    );
+  }
+
+  Future<void> _deleteForever(TrashEntry t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить навсегда?'),
+        content: const Text(
+          'Автомобиль и все связанные файлы будут удалены без возможности восстановления.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    for (final path in t.car.photos) {
+      try {
+        final f = File(path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    for (final a in t.car.attachments) {
+      try {
+        final f = File(a.path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+    trash.removeWhere((x) => x.car.id == t.car.id);
+    await Storage.saveTrash(trash);
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Корзина (${trash.length})'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : trash.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text(
+                      'Корзина пуста',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: trash.length,
+                  itemBuilder: (context, index) {
+                    final t = trash[index];
+                    final car = t.car;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${car.make} ${car.model}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Удалён: ${t.deletedAt}'
+                              ' • осталось ${t.daysLeft} дн.',
+                              style:
+                                  Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _restore(t),
+                                    icon: const Icon(Icons.restore),
+                                    label: const Text('Восстановить'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  onPressed: () => _deleteForever(t),
+                                  icon: const Icon(
+                                    Icons.delete_forever,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class HistoryEvent {
+  final DateTime date;
+  final String type;
+  final Car car;
+  final double amount;
+  HistoryEvent({
+    required this.date,
+    required this.type,
+    required this.car,
+    required this.amount,
+  });
+}
+
+class HistoryScreen extends StatelessWidget {
+  final List<Car> cars;
+  const HistoryScreen({super.key, required this.cars});
+
+  List<HistoryEvent> _events() {
+    final list = <HistoryEvent>[];
+    for (final c in cars) {
+      final pd = c.purchaseDateTime;
+      if (pd != null) {
+        list.add(HistoryEvent(
+          date: pd,
+          type: 'Покупка',
+          car: c,
+          amount: c.purchase,
+        ));
+      }
+      final sd = c.saleDateTime;
+      if (sd != null) {
+        list.add(HistoryEvent(
+          date: sd,
+          type: 'Продажа',
+          car: c,
+          amount: c.sale,
+        ));
+      }
+    }
+    list.sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _events();
+    return Scaffold(
+      appBar: AppBar(title: const Text('История покупок и продаж')),
+      body: events.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Пока нет ни покупок, ни продаж',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: events.length,
+              itemBuilder: (context, index) {
+                final e = events[index];
+                final isBuy = e.type == 'Покупка';
+                final color = isBuy ? Colors.blue : Colors.green;
+                return Card(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      child: Icon(
+                        isBuy ? Icons.shopping_cart : Icons.sell,
+                        color: color,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(
+                      '${e.type}: ${e.car.make} ${e.car.model}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${formatDate(e.date)} • ${money(e.amount)}',
+                    ),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
+class _ContractDialog extends StatefulWidget {
+  final Car car;
+  const _ContractDialog({required this.car});
+
+  @override
+  State<_ContractDialog> createState() => _ContractDialogState();
+}
+
+class _ContractDialogState extends State<_ContractDialog> {
+  final sellerFio = TextEditingController();
+  final sellerPassport = TextEditingController();
+  final sellerAddress = TextEditingController();
+  final sellerPhone = TextEditingController();
+  final buyerFio = TextEditingController();
+  final buyerPassport = TextEditingController();
+  final buyerAddress = TextEditingController();
+  final buyerPhone = TextEditingController();
+  final priceController = TextEditingController();
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    priceController.text = widget.car.sale > 0
+        ? widget.car.sale.toStringAsFixed(0)
+        : widget.car.invested.toStringAsFixed(0);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final seller = await Storage.loadSellerData();
+    final buyer = await Storage.loadBuyerData();
+    sellerFio.text = seller['fio'] ?? '';
+    sellerPassport.text = seller['passport'] ?? '';
+    sellerAddress.text = seller['address'] ?? '';
+    sellerPhone.text = seller['phone'] ?? '';
+    buyerFio.text = buyer['fio'] ?? '';
+    buyerPassport.text = buyer['passport'] ?? '';
+    buyerAddress.text = buyer['address'] ?? '';
+    buyerPhone.text = buyer['phone'] ?? '';
+    if (!mounted) return;
+    setState(() => _loaded = true);
+  }
+
+  @override
+  void dispose() {
+    sellerFio.dispose();
+    sellerPassport.dispose();
+    sellerAddress.dispose();
+    sellerPhone.dispose();
+    buyerFio.dispose();
+    buyerPassport.dispose();
+    buyerAddress.dispose();
+    buyerPhone.dispose();
+    priceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final sellerData = {
+      'fio': sellerFio.text.trim(),
+      'passport': sellerPassport.text.trim(),
+      'address': sellerAddress.text.trim(),
+      'phone': sellerPhone.text.trim(),
+    };
+    final buyerData = {
+      'fio': buyerFio.text.trim(),
+      'passport': buyerPassport.text.trim(),
+      'address': buyerAddress.text.trim(),
+      'phone': buyerPhone.text.trim(),
+    };
+    await Storage.saveSellerData(sellerData);
+    await Storage.saveBuyerData(buyerData);
+    await saveContractHtml(widget.car, sellerData, buyerData,
+        priceController.text.trim());
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Договор сформирован')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Договор купли-продажи',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Авто: ${widget.car.make} ${widget.car.model}'),
+            const SizedBox(height: 12),
+            const Divider(),
+            const Text(
+              'Продавец',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            _dlgField(sellerFio, 'ФИО'),
+            _dlgField(sellerPassport, 'Паспорт (серия номер)'),
+            _dlgField(sellerAddress, 'Адрес регистрации'),
+            _dlgField(sellerPhone, 'Телефон'),
+            const SizedBox(height: 12),
+            const Divider(),
+            const Text(
+              'Покупатель',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 6),
+            _dlgField(buyerFio, 'ФИО'),
+            _dlgField(buyerPassport, 'Паспорт (серия номер)'),
+            _dlgField(buyerAddress, 'Адрес регистрации'),
+            _dlgField(buyerPhone, 'Телефон'),
+            const SizedBox(height: 12),
+            const Divider(),
+            _dlgField(priceController, 'Цена продажи (₽)',
+                number: true),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _generate,
+                    icon: const Icon(Icons.description),
+                    label: const Text('Сформировать'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dlgField(
+    TextEditingController c,
+    String label, {
+    bool number = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: c,
+        keyboardType: number
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> saveContractHtml(
+  Car car,
+  Map<String, String> seller,
+  Map<String, String> buyer,
+  String price,
+) async {
+  final now = DateTime.now();
+  final day = now.day.toString().padLeft(2, '0');
+  final month = DateFormat('MMMM', 'ru').format(now);
+  final year = now.year;
+  final priceNum = double.tryParse(price.replaceAll(',', '.')) ?? 0;
+  final priceRub =
+      NumberFormat('#,##0').format(priceNum).replaceAll(',', ' ');
+  final priceWords = _numToRussianWords(priceNum.round());
+
+  String row(String label, String value) =>
+      '<tr><td class="lbl">$label</td><td class="val">$value</td></tr>';
+
+  final html = '''
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<title>ДКП ${car.make} ${car.model}</title>
+<style>
+  *{box-sizing:border-box;}
+  body{font-family:'Times New Roman',serif;margin:25px;line-height:1.45;color:#000;font-size:13px;}
+  h1{text-align:center;font-size:16px;margin:0 0 4px;letter-spacing:.5px;}
+  .sub{text-align:center;font-size:12px;margin-bottom:14px;}
+  .place{text-align:right;font-size:12px;margin-bottom:14px;}
+  h3{font-size:13px;margin:14px 0 6px;border-bottom:1px solid #000;padding-bottom:3px;}
+  p{text-align:justify;font-size:12.5px;margin:5px 0;}
+  table{width:100%;border-collapse:collapse;margin:6px 0;}
+  td{padding:3px 6px;vertical-align:top;font-size:12.5px;border-bottom:1px dotted #999;}
+  .lbl{width:38%;font-weight:bold;}
+  .val{width:62%;}
+  .sign{display:flex;justify-content:space-between;margin-top:34px;}
+  .sign>div{width:46%;}
+  .line{border-bottom:1px solid #000;height:22px;margin-bottom:3px;}
+  .hint{font-size:11px;color:#555;}
+  @media print{body{margin:12mm;} .noprint{display:none;}}
+</style></head><body>
+
+<h1>ДОГОВОР КУПЛИ-ПРОДАЖИ ТРАНСПОРТНОГО СРЕДСТВА</h1>
+<div class="sub">№ ${car.id} от $day $month $year г.</div>
+<div class="place">г. _________________, $day $month $year г.</div>
+
+<p>Гражданин(ка) <b>${seller['fio'] ?? ''}</b>, паспорт ${seller['passport'] ?? ''},
+зарегистрированный(ая) по адресу: ${seller['address'] ?? ''},
+телефон: ${seller['phone'] ?? ''} — «Продавец», с одной стороны, и</p>
+
+<p>Гражданин(ка) <b>${buyer['fio'] ?? ''}</b>, паспорт ${buyer['passport'] ?? ''},
+зарегистрированный(ая) по адресу: ${buyer['address'] ?? ''},
+телефон: ${buyer['phone'] ?? ''} — «Покупатель», с другой стороны,
+заключили настоящий договор о нижеследующем.</p>
+
+<h3>1. ПРЕДМЕТ ДОГОВОРА</h3>
+<p>Продавец передаёт, а Покупатель принимает в собственность транспортное средство:</p>
+<table>
+${row('Марка, модель ТС', '${car.make} ${car.model}')}
+${row('Год выпуска', car.year)}
+${row('Идентификационный номер (VIN)', car.vin)}
+${row('Государственный регистрационный знак', car.plate)}
+${row('Пробег, км', car.mileage.isEmpty ? '—' : car.mileage)}
+${row('Техническое состояние', 'удовлетворительное')}
+</table>
+
+<h3>2. ЦЕНА И ПОРЯДОК РАСЧЁТОВ</h3>
+<p>Стоимость ТС составляет <b>$priceRub ₽</b> ($priceWords).</p>
+<p>Денежные средства переданы Продавцу в полном объёме до подписания
+настоящего договора. Претензий по расчётам Стороны не имеют.</p>
+
+<h3>3. ПЕРЕДАЧА АВТОМОБИЛЯ</h3>
+<p>Продавец передаёт Покупателю автомобиль, ключи, ПТС, СТС и иные
+документы, необходимые для регистрации в ГИБДД. Покупатель обязуется
+в течение 10 дней со дня подписания договора обратиться в органы
+ГИБДД для перерегистрации транспортного средства на своё имя.</p>
+
+<h3>4. ОТВЕТСТВЕННОСТЬ СТОРОН</h3>
+<p>Продавец гарантирует, что ТС не находится в залоге, не является
+предметом спора третьих лиц, не обременено иными обязательствами, а
+также не числится в угоне. Все известные недостатки ТС сообщены
+Покупателю до подписания договора.</p>
+
+<h3>5. ПРОЧИЕ УСЛОВИЯ</h3>
+<p>Договор вступает в силу с момента подписания. Составлен в трёх
+экземплярах: по одному для Продавца и Покупателя, третий — для органов
+ГИБДД. Все экземпляры имеют одинаковую юридическую силу.</p>
+
+<div class="sign">
+  <div>
+    <b>Продавец</b>
+    <div class="line"></div>
+    <div class="hint">${seller['fio'] ?? ''}</div>
+  </div>
+  <div>
+    <b>Покупатель</b>
+    <div class="line"></div>
+    <div class="hint">${buyer['fio'] ?? ''}</div>
+  </div>
+</div>
+
+<p style="margin-top:24px;text-align:center;" class="hint">
+Денежные средства в размере $priceRub ₽ получил, транспортное средство передал:
+</p>
+<div class="sign">
+  <div>
+    <div class="line"></div>
+    <div class="hint">подпись Продавца</div>
+  </div>
+  <div>
+    <div class="line"></div>
+    <div class="hint">подпись Покупателя</div>
+  </div>
+</div>
+
+</body></html>
+''';
+
+  final dir = await getApplicationDocumentsDirectory();
+  final contractsDir = Directory(p.join(dir.path, 'contracts'));
+  if (!await contractsDir.exists()) {
+    await contractsDir.create(recursive: true);
+  }
+  final fileName =
+      'ДКП_${car.make}_${car.model}_${DateTime.now().millisecondsSinceEpoch}.html';
+  final file = File(p.join(contractsDir.path, fileName));
+  await file.writeAsString(html);
+  await OpenFilex.open(file.path);
+}
+
+String _numToRussianWords(int n) {
+  if (n == 0) return 'ноль рублей 00 копеек';
+  final units = [
+    '', 'один', 'два', 'три', 'четыре', 'пять',
+    'шесть', 'семь', 'восемь', 'девять', 'десять',
+    'одиннадцать', 'двенадцать', 'тринадцать',
+    'четырнадцать', 'пятнадцать', 'шестнадцать',
+    'семнадцать', 'восемнадцать', 'девятнадцать'
+  ];
+  final tens = [
+    '', '', 'двадцать', 'тридцать', 'сорок',
+    'пятьдесят', 'шестьдесят', 'семьдесят',
+    'восемьдесят', 'девяносто'
+  ];
+  final hundreds = [
+    '', 'сто', 'двести', 'триста', 'четыреста',
+    'пятьсот', 'шестьсот', 'семьсот', 'восемьсот',
+    'девятьсот'
+  ];
+  final female = [
+    '', 'одна', 'две', 'три', 'четыре', 'пять',
+    'шесть', 'семь', 'восемь', 'девять', 'десять',
+    'одиннадцать', 'двенадцать', 'тринадцать',
+    'четырнадцать', 'пятнадцать', 'шестнадцать',
+    'семнадцать', 'восемнадцать', 'девятнадцать'
+  ];
+
+  String under1000(int num, {bool feminine = false}) {
+    final parts = <String>[];
+    parts.add(hundreds[num ~/ 100]);
+    final rest = num % 100;
+    if (rest < 20) {
+      parts.add(feminine ? female[rest] : units[rest]);
+    } else {
+      parts.add(tens[rest ~/ 10]);
+      parts.add(feminine ? female[rest % 10] : units[rest % 10]);
+    }
+    return parts.where((x) => x.isNotEmpty).join(' ');
+  }
+
+  final parts = <String>[];
+  final millions = n ~/ 1000000;
+  final thousands = (n % 1000000) ~/ 1000;
+  final rest = n % 1000;
+
+  if (millions > 0) {
+    parts.add(under1000(millions));
+    final last = millions % 10;
+    final lastTwo = millions % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('миллионов');
+    } else if (last == 1) {
+      parts.add('миллион');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('миллиона');
+    } else {
+      parts.add('миллионов');
+    }
+  }
+  if (thousands > 0) {
+    parts.add(under1000(thousands, feminine: true));
+    final last = thousands % 10;
+    final lastTwo = thousands % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('тысяч');
+    } else if (last == 1) {
+      parts.add('тысяча');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('тысячи');
+    } else {
+      parts.add('тысяч');
+    }
+  }
+  if (rest > 0) {
+    parts.add(under1000(rest));
+    final last = rest % 10;
+    final lastTwo = rest % 100;
+    if (lastTwo >= 11 && lastTwo <= 14) {
+      parts.add('рублей');
+    } else if (last == 1) {
+      parts.add('рубль');
+    } else if (last >= 2 && last <= 4) {
+      parts.add('рубля');
+    } else {
+      parts.add('рублей');
+    }
+  } else {
+    parts.add('рублей');
+  }
+  parts.add('00 копеек');
+  final joined = parts.where((x) => x.isNotEmpty).join(' ');
+  return joined[0].toUpperCase() + joined.substring(1);
+}
