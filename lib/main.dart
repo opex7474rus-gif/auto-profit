@@ -15,7 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSupabaseUrl = 'https://sqawuzstldgjmllwwtci.supabase.co';
 const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWw58bjCxXtRVkJJLo';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWW58bjCxXtRVkJJLo';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
@@ -427,53 +427,141 @@ class Storage {
   static const _sellerKey = 'seller_data_v1';
   static const _buyerKey = 'buyer_data_v1';
 
+  static SupabaseClient get _db => Supabase.instance.client;
+  static String? get _uid => _db.auth.currentUser?.id;
+
+  static Map<String, dynamic> _carToRow(Car c) {
+    final uid = _uid;
+    return {
+      if (uid != null) 'user_id': uid,
+      'id': c.id,
+      'make': c.make,
+      'model': c.model,
+      'year': c.year,
+      'vin': c.vin,
+      'plate': c.plate,
+      'mileage': c.mileage,
+      'purchase_price': c.purchasePrice,
+      'purchase_date': c.purchaseDate,
+      'status': c.status,
+      'status_changed_at': c.statusChangedAt,
+      'seller': c.seller,
+      'seller_phone': c.sellerPhone,
+      'seller_address': c.sellerAddress,
+      'notes': c.notes,
+      'sale_price': c.salePrice,
+      'sale_date': c.saleDate,
+      'tags': c.tags,
+      'expenses': c.expenses.map((e) => e.toJson()).toList(),
+      'photos': c.photos,
+      'attachments': c.attachments.map((a) => a.toJson()).toList(),
+    };
+  }
+
+  static Car _rowToCar(Map<String, dynamic> r) {
+    return Car(
+      id: (r['id'] ?? '') as String,
+      make: (r['make'] ?? '') as String,
+      model: (r['model'] ?? '') as String,
+      year: (r['year'] ?? '') as String,
+      vin: (r['vin'] ?? '') as String,
+      plate: (r['plate'] ?? '') as String,
+      mileage: (r['mileage'] ?? '') as String,
+      purchasePrice: (r['purchase_price'] ?? '') as String,
+      purchaseDate: (r['purchase_date'] ?? '') as String,
+      status: (r['status'] ?? 'Куплен') as String,
+      statusChangedAt: (r['status_changed_at'] ?? '') as String,
+      seller: (r['seller'] ?? '') as String,
+      sellerPhone: (r['seller_phone'] ?? '') as String,
+      sellerAddress: (r['seller_address'] ?? '') as String,
+      notes: (r['notes'] ?? '') as String,
+      salePrice: (r['sale_price'] ?? '') as String,
+      saleDate: (r['sale_date'] ?? '') as String,
+      tags: ((r['tags'] ?? []) as List)
+          .map((e) => e.toString())
+          .toList(),
+      expenses: ((r['expenses'] ?? []) as List)
+          .map((e) => Expense.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      photos: ((r['photos'] ?? []) as List)
+          .map((e) => e.toString())
+          .toList(),
+      attachments: ((r['attachments'] ?? []) as List)
+          .map((e) => Attachment.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
   static Future<List<Car>> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_key);
-    if (raw == null || raw.isEmpty) return [];
+    List<Car> local = [];
     try {
-      final list = jsonDecode(raw) as List;
-      return list
-          .map((e) => Car.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List;
+        local = list
+            .map((e) => Car.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+
+    try {
+      if (_uid != null) {
+        final rows = await _db
+            .from('cars')
+            .select()
+            .order('created_at', ascending: true);
+        final cars = (rows as List)
+            .map((r) => _rowToCar(r as Map<String, dynamic>))
+            .toList();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _key,
+          jsonEncode(cars.map((c) => c.toJson()).toList()),
+        );
+        return cars;
+      }
+    } catch (_) {}
+
+    return local;
   }
 
   static Future<void> save(List<Car> cars) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      _key,
-      jsonEncode(cars.map((c) => c.toJson()).toList()),
-    );
-    await autoBackup(cars);
-  }
-
-  static Future<void> autoBackup(List<Car> cars) async {
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final backupDir =
-          Directory(p.join(dir.path, 'AutoProfit', 'backups'));
-      if (!await backupDir.exists()) {
-        await backupDir.create(recursive: true);
-      }
-      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final file = File(p.join(backupDir.path, 'backup_$date.json'));
-      await file.writeAsString(
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _key,
         jsonEncode(cars.map((c) => c.toJson()).toList()),
       );
-      final files = backupDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.json'))
-          .toList()
-        ..sort((a, b) => b.path.compareTo(a.path));
-      for (int i = 7; i < files.length; i++) {
-        try {
-          await files[i].delete();
-        } catch (_) {}
+    } catch (_) {}
+
+    try {
+      if (_uid == null) return;
+
+      final existingRows = await _db.from('cars').select('id');
+      final existingIds = (existingRows as List)
+          .map((r) => (r['id'] ?? '').toString())
+          .toSet();
+
+      if (cars.isNotEmpty) {
+        final rows = cars.map((c) => _carToRow(c)).toList();
+        await _db.from('cars').upsert(rows);
       }
+
+      final localIds = cars.map((c) => c.id).toSet();
+      final toDelete = existingIds.difference(localIds).toList();
+      if (toDelete.isNotEmpty) {
+        await _db.from('cars').delete().inFilter('id', toDelete);
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> clearLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key);
+      await prefs.remove(_trashKey);
     } catch (_) {}
   }
 
@@ -1288,7 +1376,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ],
         ),
-                  const SizedBox(height: 8),
+                 const SizedBox(height: 8),
         Card(
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -1637,7 +1725,7 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Выйти из аккаунта?'),
         content: const Text(
-          'Локальные данные останутся в памяти телефона.',
+          'Данные останутся в облаке и будут доступны при следующем входе.',
         ),
         actions: [
           TextButton(
@@ -1652,10 +1740,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (ok == true) {
+      await Storage.clearLocalCache();
       await Supabase.instance.client.auth.signOut();
     }
   }
-    IconData _themeIcon(ThemeMode mode) {
+   IconData _themeIcon(ThemeMode mode) {
   switch (mode) {
     case ThemeMode.light:
       return Icons.light_mode;
@@ -2566,7 +2655,8 @@ class _CarFormScreenState extends State<CarFormScreen> {
     notesFocus.dispose();
     super.dispose();
   }
-      Future<void> pickPurchaseDate() async {
+
+  Future<void> pickPurchaseDate() async {
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -2689,8 +2779,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       ),
     );
   }
-
-  @override
+      @override
   Widget build(BuildContext context) {
     final allTagOptions = <String>{
       ...kTagSuggestions,
@@ -2830,6 +2919,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
+
 class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
@@ -3943,7 +4033,6 @@ class _ExpensesBlock extends StatelessWidget {
     );
   }
 }
-
 Future<void> showExpenseDialog({
   required BuildContext context,
   required Car car,
@@ -4060,6 +4149,7 @@ Future<void> showExpenseDialog({
     },
   );
 }
+
 class TrashScreen extends StatefulWidget {
   final void Function(Car) onRestore;
 
@@ -4213,7 +4303,6 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-
 class HistoryEvent {
   final DateTime date;
   final String type;
@@ -4306,6 +4395,7 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 }
+
 class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
@@ -4493,7 +4583,6 @@ class _ContractDialogState extends State<_ContractDialog> {
     );
   }
 }
-
 Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
