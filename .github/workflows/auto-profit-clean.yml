@@ -26,14 +26,46 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name auto_profit
 
-      - name: Add INTERNET permission to AndroidManifest
+      - name: Add INTERNET permission
         run: |
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'android.permission.INTERNET' $MANIFEST; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' $MANIFEST
           fi
-          echo "--- Содержимое манифеста ---"
-          grep -E 'uses-permission|application' $MANIFEST | head -5
+
+      - name: Add queries for url_launcher
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          m = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          s = m.read_text()
+          if 'android.intent.action.VIEW' in s:
+              print('Queries already present')
+          else:
+              nl = chr(10)
+              q = '<queries>' + nl
+              q += '        <intent>' + nl
+              q += '            <action android:name="android.intent.action.VIEW" />' + nl
+              q += '            <data android:scheme="https" />' + nl
+              q += '        </intent>' + nl
+              q += '        <intent>' + nl
+              q += '            <action android:name="android.intent.action.VIEW" />' + nl
+              q += '            <data android:scheme="http" />' + nl
+              q += '        </intent>' + nl
+              q += '        <intent>' + nl
+              q += '            <action android:name="android.intent.action.VIEW" />' + nl
+              q += '            <data android:scheme="content" />' + nl
+              q += '        </intent>' + nl
+              q += '        <intent>' + nl
+              q += '            <action android:name="android.intent.action.VIEW" />' + nl
+              q += '            <data android:scheme="file" />' + nl
+              q += '        </intent>' + nl
+              q += '    </queries>' + nl
+              q += '</manifest>'
+              s = s.replace('</manifest>', q)
+              m.write_text(s)
+              print('Queries added')
+          PY
 
       - name: Decode Keystore
         run: |
