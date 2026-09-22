@@ -2748,7 +2748,6 @@ Widget build(BuildContext context) {
       ),
     );
   }
-}
 class ModeTab extends StatelessWidget {
   final String label;
   final int count;
