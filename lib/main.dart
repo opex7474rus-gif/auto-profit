@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
@@ -16,7 +17,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSupabaseUrl = 'https://sqawuzstldgjmllwwtci.supabase.co';
 const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWW58bjCxXtRVkJJLo';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWw58bjCxXtRVkJJLo';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
@@ -57,6 +58,8 @@ const int kTrashDays = 30;
 const double kMinMargin = 30000;
 const double kPartnerProfitShare = 0.33;
 
+const Color kSeedColor = Color(0xFF4A4FC7);
+
 const Map<String, List<String>> kCarCatalog = {
   'Lada': ['Granta', 'Vesta', 'Largus', 'Niva', 'XRAY', 'Kalina', 'Priora'],
   'Toyota': ['Camry', 'Corolla', 'RAV4', 'Land Cruiser', 'Highlander'],
@@ -95,8 +98,146 @@ const Map<String, String> kDefaultBuyerData = {
   'phone': '',
 };
 
+class AppTheme {
+  static ThemeData light() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: kSeedColor,
+      brightness: Brightness.light,
+    );
+    return _base(scheme).copyWith(
+      scaffoldBackgroundColor: const Color(0xFFF6F7FB),
+      cardTheme: _cardTheme(scheme),
+    );
+  }
+
+  static ThemeData dark() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: kSeedColor,
+      brightness: Brightness.dark,
+    );
+    return _base(scheme).copyWith(
+      scaffoldBackgroundColor: const Color(0xFF14151A),
+      cardTheme: _cardTheme(scheme),
+    );
+  }
+
+  static CardThemeData _cardTheme(ColorScheme scheme) {
+    return CardThemeData(
+      elevation: 0,
+      color: scheme.surface,
+      shadowColor: Colors.black.withValues(alpha: 0.08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      margin: EdgeInsets.zero,
+    );
+  }
+
+  static ThemeData _base(ColorScheme scheme) {
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      splashFactory: InkSparkle.splashFactory,
+      appBarTheme: AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
+        backgroundColor: scheme.surface,
+        surfaceTintColor: scheme.surface,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 1.6),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 14,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 14,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+        side: BorderSide.none,
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: 0.4),
+        thickness: 1,
+        space: 20,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        backgroundColor: scheme.surface,
+      ),
+    );
+  }
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+    ),
+  );
   await Supabase.initialize(
     url: kSupabaseUrl,
     anonKey: kSupabaseAnonKey,
@@ -117,17 +258,8 @@ class AutoProfitApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'Авто Профит',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
           themeMode: mode,
           home: const AuthGate(),
         );
@@ -1091,71 +1223,378 @@ class Analytics {
     return months;
   }
 }
-class _KpiCard extends StatelessWidget {
+Color statusColor(String status) {
+  switch (status) {
+    case 'Куплен':
+      return const Color(0xFF3B82F6);
+    case 'В ремонте':
+      return const Color(0xFFF59E0B);
+    case 'Готов к продаже':
+      return const Color(0xFF8B5CF6);
+    case 'На продаже':
+      return const Color(0xFF06B6D4);
+    case 'Продан':
+      return const Color(0xFF10B981);
+    default:
+      return Colors.grey;
+  }
+}
+
+IconData statusIcon(String status) {
+  switch (status) {
+    case 'Куплен':
+      return Icons.shopping_cart_outlined;
+    case 'В ремонте':
+      return Icons.build_outlined;
+    case 'Готов к продаже':
+      return Icons.checklist_rtl;
+    case 'На продаже':
+      return Icons.sell_outlined;
+    case 'Продан':
+      return Icons.check_circle_outline;
+    default:
+      return Icons.circle_outlined;
+  }
+}
+
+class StatusChip extends StatelessWidget {
+  final String status;
+  final bool compact;
+
+  const StatusChip({
+    super.key,
+    required this.status,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = statusColor(status);
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 3 : 5,
+      ),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(statusIcon(status), size: compact ? 11 : 13, color: c),
+          const SizedBox(width: 4),
+          Text(
+            status,
+            style: TextStyle(
+              color: c,
+              fontSize: compact ? 10 : 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class KpiCard extends StatelessWidget {
   final String title;
   final String value;
   final String? subtitle;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
+  final bool highlight;
 
-  const _KpiCard({
+  const KpiCard({
+    super.key,
     required this.title,
     required this.value,
     this.subtitle,
     required this.icon,
     required this.color,
+    this.onTap,
+    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      elevation: 1,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: highlight
+                  ? [color, color.withValues(alpha: 0.78)]
+                  : [
+                      color.withValues(alpha: isDark ? 0.18 : 0.10),
+                      color.withValues(alpha: isDark ? 0.08 : 0.03),
+                    ],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: color.withValues(alpha: isDark ? 0.25 : 0.15),
+              width: 1,
+            ),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(7),
+                    decoration: BoxDecoration(
+                      color: highlight
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : color.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 16,
+                      color: highlight ? Colors.white : color,
+                    ),
                   ),
-                  child: Icon(icon, size: 18, color: color),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: highlight
+                            ? Colors.white.withValues(alpha: 0.92)
+                            : theme.colorScheme.onSurfaceVariant,
+                        height: 1.15,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: highlight
+                        ? Colors.white
+                        : theme.colorScheme.onSurface,
+                    letterSpacing: -0.4,
+                  ),
+                  maxLines: 1,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  subtitle!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    height: 1.2,
+                    fontWeight: FontWeight.w500,
+                    color: highlight
+                        ? Colors.white.withValues(alpha: 0.85)
+                        : theme.colorScheme.onSurfaceVariant,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SectionTitle extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  final Widget? trailing;
+
+  const SectionTitle({
+    super.key,
+    required this.text,
+    required this.icon,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 10, 4, 10),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
             ),
-            const SizedBox(height: 8),
-            Text(
-              value,
+            child: Icon(
+              icon,
+              size: 15,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
               style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+class DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color? valueColor;
+  final bool bold;
+
+  const DetailRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.valueColor,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.5,
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: bold ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w700,
+              color: valueColor ?? theme.colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PaddedCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsets padding;
+  final Color? color;
+
+  const PaddedCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: color,
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             if (subtitle != null) ...[
-              const SizedBox(height: 2),
+              const SizedBox(height: 6),
               Text(
                 subtitle!,
-                style: theme.textTheme.bodySmall?.copyWith(
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
                   color: theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
             ],
           ],
@@ -1164,73 +1603,12 @@ class _KpiCard extends StatelessWidget {
     );
   }
 }
-
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  const _SectionTitle({required this.text, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _DetailRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(
-            child: Text(label, style: const TextStyle(fontSize: 14)),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: valueColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExpensesTopCard extends StatelessWidget {
+class ExpensesTopCard extends StatelessWidget {
   final List<CategoryStat> stats;
   final double totalExpenses;
 
-  const _ExpensesTopCard({
+  const ExpensesTopCard({
+    super.key,
     required this.stats,
     required this.totalExpenses,
   });
@@ -1238,78 +1616,115 @@ class _ExpensesTopCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (stats.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Расходов ещё нет'),
+      return PaddedCard(
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            const Text('Расходов ещё нет'),
+          ],
         ),
       );
     }
     const palette = [
-      Colors.blue,
-      Colors.deepOrange,
-      Colors.purple,
-      Colors.teal,
-      Colors.amber,
+      Color(0xFF4A4FC7),
+      Color(0xFFFF7A45),
+      Color(0xFF9B5DE5),
+      Color(0xFF06B6D4),
+      Color(0xFFF59E0B),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (int i = 0; i < stats.length; i++)
-              Builder(builder: (context) {
-                final s = stats[i];
-                final pct = totalExpenses == 0
-                    ? 0.0
-                    : (s.amount / totalExpenses) * 100;
-                final color = palette[i % palette.length];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
+    return PaddedCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (int i = 0; i < stats.length; i++)
+            Builder(builder: (context) {
+              final s = stats[i];
+              final pct = totalExpenses == 0
+                  ? 0.0
+                  : (s.amount / totalExpenses) * 100;
+              final color = palette[i % palette.length];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
                             s.name,
                             style: const TextStyle(
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          Text(
-                            '${money(s.amount)}  •  '
-                            '${pct.toStringAsFixed(0)}%',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: (pct / 100).clamp(0.0, 1.0),
-                          minHeight: 6,
-                          backgroundColor:
-                              color.withValues(alpha: 0.15),
-                          valueColor: AlwaysStoppedAnimation(color),
                         ),
+                        Text(
+                          money(s.amount),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${pct.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: (pct / 100).clamp(0.0, 1.0),
+                        minHeight: 7,
+                        backgroundColor:
+                            color.withValues(alpha: 0.12),
+                        valueColor: AlwaysStoppedAnimation(color),
                       ),
-                    ],
-                  ),
-                );
-              }),
-          ],
-        ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+        ],
       ),
     );
   }
 }
-class _MonthlyChart extends StatelessWidget {
+
+class MonthlyChart extends StatelessWidget {
   final List<MonthStat> stats;
-  const _MonthlyChart({required this.stats});
+  const MonthlyChart({super.key, required this.stats});
 
   @override
   Widget build(BuildContext context) {
@@ -1318,186 +1733,192 @@ class _MonthlyChart extends StatelessWidget {
         .map((m) => m.profit.abs())
         .fold<double>(0, (a, b) => a > b ? a : b);
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 130,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: stats.map((m) {
-                  final positive = m.profit >= 0;
-                  final value = maxProfit == 0
-                      ? 0.0
-                      : (m.profit.abs() / maxProfit);
-                  final barHeight = 10 + 90 * value;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
+    final positiveColor = const Color(0xFF10B981);
+    final negativeColor = const Color(0xFFEF4444);
+
+    return PaddedCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 140,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: stats.map((m) {
+                final positive = m.profit >= 0;
+                final value = maxProfit == 0
+                    ? 0.0
+                    : (m.profit.abs() / maxProfit);
+                final barHeight = 12 + 88 * value;
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
                             m.profit == 0 ? '—' : moneyShort(m.profit),
-                            style: const TextStyle(fontSize: 10),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.clip,
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            height: barHeight,
-                            decoration: BoxDecoration(
-                              color:
-                                  positive ? Colors.green : Colors.red,
-                              borderRadius: BorderRadius.circular(4),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: positive
+                                  ? positiveColor
+                                  : negativeColor,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            m.label,
-                            style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          height: barHeight,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: positive
+                                  ? [
+                                      positiveColor,
+                                      positiveColor.withValues(alpha: 0.6),
+                                    ]
+                                  : [
+                                      negativeColor,
+                                      negativeColor.withValues(alpha: 0.6),
+                                    ],
+                            ),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          m.label,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+                );
+              }).toList(),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Прибыль по месяцам продаж (последние 6)',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Прибыль по месяцам (последние 6)',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _BestWorstCard extends StatelessWidget {
+class BestWorstCard extends StatelessWidget {
   final Car? best;
   final Car? worst;
 
-  const _BestWorstCard({required this.best, required this.worst});
+  const BestWorstCard({super.key, required this.best, required this.worst});
 
   @override
   Widget build(BuildContext context) {
     if (best == null && worst == null) return const SizedBox.shrink();
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.emoji_events,
-                          color: Colors.green, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Лучшая',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  if (best != null) ...[
-                    Text(
-                      '${best!.make} ${best!.model}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      money(best!.profit),
-                      style: const TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ] else
-                    const Text('—'),
-                ],
-              ),
-            ),
+          child: _miniCard(
+            context,
+            title: 'Лучшая',
+            car: best,
+            icon: Icons.emoji_events_outlined,
+            color: const Color(0xFF10B981),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.trending_down,
-                          color: Colors.red, size: 18),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Худшая',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  if (worst != null) ...[
-                    Text(
-                      '${worst!.make} ${worst!.model}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      money(worst!.profit),
-                      style: TextStyle(
-                        color: worst!.profit >= 0
-                            ? Colors.green
-                            : Colors.red,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ] else
-                    const Text('—'),
-                ],
-              ),
-            ),
+          child: _miniCard(
+            context,
+            title: 'Худшая',
+            car: worst,
+            icon: Icons.trending_down,
+            color: const Color(0xFFEF4444),
           ),
         ),
       ],
     );
   }
-}
 
-class _AnalyticsSection extends StatefulWidget {
+  Widget _miniCard(
+    BuildContext context, {
+    required String title,
+    required Car? car,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (car != null) ...[
+            Text(
+              '${car.make} ${car.model}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              money(car.profit),
+              style: TextStyle(
+                color: car.profit >= 0
+                    ? const Color(0xFF10B981)
+                    : const Color(0xFFEF4444),
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+          ] else
+            const Text('—'),
+        ],
+      ),
+    );
+  }
+}
+class AnalyticsSection extends StatefulWidget {
   final Analytics analytics;
-  const _AnalyticsSection({required this.analytics});
+  const AnalyticsSection({super.key, required this.analytics});
 
   @override
-  State<_AnalyticsSection> createState() => _AnalyticsSectionState();
+  State<AnalyticsSection> createState() => _AnalyticsSectionState();
 }
 
-class _AnalyticsSectionState extends State<_AnalyticsSection> {
+class _AnalyticsSectionState extends State<AnalyticsSection> {
   bool expanded = false;
 
   @override
@@ -1512,12 +1933,36 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
           crossAxisCount: 2,
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 1.4,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
+          childAspectRatio: 1.38,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
           children: [
-            _KpiCard(
-              title: 'Доля партнёра в наличии',
+            KpiCard(
+              title: 'Прибыль всего',
+              value: moneyShort(a.totalProfit),
+              subtitle: '${a.soldAllTimeCount} ${carsLabel(a.soldAllTimeCount)}',
+              icon: Icons.trending_up,
+              color: a.totalProfit >= 0
+                  ? const Color(0xFF10B981)
+                  : const Color(0xFFEF4444),
+              highlight: true,
+            ),
+            KpiCard(
+              title: 'Прибыль за месяц',
+              value: moneyShort(a.profitThisMonth),
+              subtitle: '${a.soldThisMonthCount} за месяц',
+              icon: Icons.calendar_today_outlined,
+              color: const Color(0xFF4A4FC7),
+            ),
+            KpiCard(
+              title: 'В наличии',
+              value: '${a.stockCars.length}',
+              subtitle: moneyShort(a.totalInvestedStock),
+              icon: Icons.directions_car_filled_outlined,
+              color: const Color(0xFFFF7A45),
+            ),
+            KpiCard(
+              title: 'Доля партнёра',
               value: a.partnerCarsCountStock == 0
                   ? '—'
                   : moneyShort(a.totalPartnerStock),
@@ -1525,94 +1970,67 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   ? 'нигде не указана'
                   : 'в ${a.partnerCarsCountStock} '
                       '${carsLabel(a.partnerCarsCountStock)}',
-              icon: Icons.handshake,
-              color: Colors.brown,
+              icon: Icons.handshake_outlined,
+              color: const Color(0xFF9B5DE5),
             ),
-            _KpiCard(
-              title: 'В наличии',
-              value: '${a.stockCars.length}',
-              subtitle: moneyShort(a.totalInvestedStock),
-              icon: Icons.directions_car,
-              color: Colors.orange,
-            ),
-            _KpiCard(
-              title: 'Прибыль за месяц',
-              value: moneyShort(a.profitThisMonth),
-              subtitle: '${a.soldThisMonthCount} за месяц',
-              icon: Icons.calendar_today,
-              color:
-                  a.profitThisMonth >= 0 ? Colors.green : Colors.red,
-            ),
-            _KpiCard(
-              title: 'Прибыль всего',
-              value: moneyShort(a.totalProfit),
-              subtitle: '${a.soldAllTimeCount} за всё время',
-              icon: Icons.trending_up,
-              color: a.totalProfit >= 0 ? Colors.green : Colors.red,
-            ),
-            _KpiCard(
+            KpiCard(
               title: 'Прибыль партнёра',
               value: a.partnerProfitShare == 0
                   ? '—'
                   : moneyShort(a.partnerProfitShare),
               subtitle: 'Вам: ${moneyShort(a.myProfitShare)}',
-              icon: Icons.account_balance,
-              color: Colors.teal,
+              icon: Icons.account_balance_outlined,
+              color: const Color(0xFF06B6D4),
             ),
-            _KpiCard(
-              title: 'Средняя за месяц',
-              value: moneyShort(a.averageProfitThisMonth),
-              subtitle: 'с машины в этом месяце',
-              icon: Icons.calculate,
-              color: Colors.cyan,
-            ),
-            _KpiCard(
-              title: 'Средняя всего',
-              value: moneyShort(a.averageProfit),
-              subtitle: 'с машины за всё время',
-              icon: Icons.attach_money,
-              color: Colors.indigo,
-            ),
-            _KpiCard(
-              title: 'Закуп в наличии',
-              value: moneyShort(a.totalPurchaseStock),
-              subtitle: '${a.stockCars.length} '
-                  '${carsLabel(a.stockCars.length)}, без расходов',
-              icon: Icons.shopping_cart,
-              color: Colors.deepOrange,
-            ),
-            _KpiCard(
-              title: 'Расходы в наличии',
-              value: moneyShort(a.totalExpensesStock),
-              subtitle: 'ремонты, запчасти и т.д.',
-              icon: Icons.build,
-              color: Colors.redAccent,
-            ),
-            _KpiCard(
+            KpiCard(
               title: 'Рентабельность',
               value: a.soldCars.isEmpty
                   ? '—'
                   : '${a.profitability.toStringAsFixed(1)}%',
               subtitle: 'прибыль / вложено',
               icon: Icons.percent,
-              color: Colors.pink,
+              color: const Color(0xFFEC4899),
+            ),
+            KpiCard(
+              title: 'Средняя за месяц',
+              value: moneyShort(a.averageProfitThisMonth),
+              subtitle: 'с машины в этом месяце',
+              icon: Icons.calculate_outlined,
+              color: const Color(0xFF0EA5E9),
+            ),
+            KpiCard(
+              title: 'Средняя всего',
+              value: moneyShort(a.averageProfit),
+              subtitle: 'с машины за всё время',
+              icon: Icons.attach_money,
+              color: const Color(0xFF8B5CF6),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Card(
-          clipBehavior: Clip.antiAlias,
+        const SizedBox(height: 12),
+        Material(
+          color: Colors.transparent,
           child: InkWell(
+            borderRadius: BorderRadius.circular(16),
             onTap: () => setState(() => expanded = !expanded),
-            child: Padding(
+            child: Container(
               padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
+                horizontal: 16,
+                vertical: 14,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                ),
+                color: theme.colorScheme.primary.withValues(alpha: 0.06),
               ),
               child: Row(
                 children: [
                   Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 10),
@@ -1621,9 +2039,16 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                       expanded
                           ? 'Свернуть подробную аналитику'
                           : 'Развернуть подробную аналитику',
-                      style:
-                          const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
                     ),
+                  ),
+                  Icon(
+                    Icons.analytics_outlined,
+                    size: 18,
+                    color: theme.colorScheme.primary,
                   ),
                 ],
               ),
@@ -1631,225 +2056,327 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
           ),
         ),
         if (expanded) ...[
-          const SizedBox(height: 8),
-          const _SectionTitle(
+          const SizedBox(height: 4),
+          const SectionTitle(
             text: 'Общие финансы',
-            icon: Icons.receipt_long,
+            icon: Icons.receipt_long_outlined,
           ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: [
-                  _DetailRow(
-                    label: 'Вложено всего',
-                    value: money(a.totalInvested),
-                    valueColor: Colors.blue,
-                  ),
-                  _DetailRow(
-                    label: 'Заработано',
-                    value: money(a.totalRevenue),
-                    valueColor: Colors.teal,
-                  ),
-                  const Divider(),
-                  _DetailRow(
-                    label: 'Закупка всего',
-                    value: money(a.totalPurchase),
-                  ),
-                  _DetailRow(
-                    label: 'Расходы всего',
-                    value: money(a.totalExpenses),
-                  ),
-                  const Divider(),
-                  _DetailRow(
-                    label: 'Закуп в наличии',
-                    value: money(a.totalPurchaseStock),
-                    valueColor: Colors.deepOrange,
-                  ),
-                  _DetailRow(
-                    label: 'Расходы в наличии',
-                    value: money(a.totalExpensesStock),
-                    valueColor: Colors.redAccent,
-                  ),
-                  _DetailRow(
-                    label: 'Всего вложено в наличие',
-                    value: money(a.totalInvestedStock),
-                    valueColor: Colors.orange,
-                  ),
-                  const SizedBox(height: 6),
-                  _DetailRow(
-                    label: 'Закуп в проданных',
-                    value: money(a.totalPurchaseSold),
-                  ),
-                  _DetailRow(
-                    label: 'Расходы в проданных',
-                    value: money(a.totalExpensesSold),
-                  ),
-                  _DetailRow(
-                    label: 'Всего вложено в проданные',
-                    value: money(a.totalInvestedSold),
-                  ),
-                  const Divider(),
-                  _DetailRow(
-                    label: 'Прибыль за этот месяц',
-                    value: money(a.profitThisMonth),
-                    valueColor: a.profitThisMonth >= 0
-                        ? Colors.green
-                        : Colors.red,
-                  ),
-                  _DetailRow(
-                    label: 'Прибыль за всё время',
-                    value: money(a.totalProfit),
-                    valueColor: a.totalProfit >= 0
-                        ? Colors.green
-                        : Colors.red,
-                  ),
-                ],
-              ),
+          PaddedCard(
+            child: Column(
+              children: [
+                DetailRow(
+                  label: 'Вложено всего',
+                  value: money(a.totalInvested),
+                  valueColor: const Color(0xFF4A4FC7),
+                ),
+                DetailRow(
+                  label: 'Заработано',
+                  value: money(a.totalRevenue),
+                  valueColor: const Color(0xFF06B6D4),
+                ),
+                const Divider(),
+                DetailRow(
+                  label: 'Закупка всего',
+                  value: money(a.totalPurchase),
+                ),
+                DetailRow(
+                  label: 'Расходы всего',
+                  value: money(a.totalExpenses),
+                ),
+                const Divider(),
+                DetailRow(
+                  label: 'Закуп в наличии',
+                  value: money(a.totalPurchaseStock),
+                  valueColor: const Color(0xFFFF7A45),
+                ),
+                DetailRow(
+                  label: 'Расходы в наличии',
+                  value: money(a.totalExpensesStock),
+                  valueColor: const Color(0xFFEF4444),
+                ),
+                DetailRow(
+                  label: 'Всего вложено в наличие',
+                  value: money(a.totalInvestedStock),
+                  valueColor: const Color(0xFFF59E0B),
+                ),
+                const SizedBox(height: 4),
+                DetailRow(
+                  label: 'Закуп в проданных',
+                  value: money(a.totalPurchaseSold),
+                ),
+                DetailRow(
+                  label: 'Расходы в проданных',
+                  value: money(a.totalExpensesSold),
+                ),
+                DetailRow(
+                  label: 'Всего вложено в проданные',
+                  value: money(a.totalInvestedSold),
+                ),
+                const Divider(),
+                DetailRow(
+                  label: 'Прибыль за месяц',
+                  value: money(a.profitThisMonth),
+                  valueColor: a.profitThisMonth >= 0
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
+                ),
+                DetailRow(
+                  label: 'Прибыль за всё время',
+                  value: money(a.totalProfit),
+                  valueColor: a.totalProfit >= 0
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
+                ),
+              ],
             ),
           ),
-          const _SectionTitle(
+          const SectionTitle(
             text: 'Разделение прибыли с партнёром',
-            icon: Icons.handshake,
+            icon: Icons.handshake_outlined,
           ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: [
-                  if (a.partnerCarsCount == 0)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Доля партнёра нигде не указана',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  else ...[
-                    _DetailRow(
-                      label: 'Всего вложено партнёром',
-                      value: money(a.totalPartnerInvestment),
-                      valueColor: Colors.brown,
+          PaddedCard(
+            child: Column(
+              children: [
+                if (a.partnerCarsCount == 0)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Доля партнёра нигде не указана',
+                      style: TextStyle(color: Colors.grey),
                     ),
-                    _DetailRow(
-                      label: 'Указано в машинах',
-                      value: '${a.partnerCarsCount} '
-                          '${carsLabel(a.partnerCarsCount)}',
-                    ),
-                    const Divider(),
-                    _DetailRow(
-                      label: 'Доля партнёра в наличии',
-                      value: money(a.totalPartnerStock),
-                      valueColor: Colors.brown,
-                    ),
-                    _DetailRow(
-                      label: 'Машин в наличии с долей',
-                      value: '${a.partnerCarsCountStock}',
-                    ),
-                    const SizedBox(height: 6),
-                    _DetailRow(
-                      label: 'Доля партнёра в проданных',
-                      value: money(a.totalPartnerSold),
-                      valueColor: Colors.brown,
-                    ),
-                    _DetailRow(
-                      label: 'Машин проданных с долей',
-                      value: '${a.partnerCarsCountSold}',
-                    ),
-                    const Divider(),
-                    _DetailRow(
-                      label: 'Прибыль партнёра (33%)',
-                      value: money(a.partnerProfitShare),
-                      valueColor: Colors.brown,
-                    ),
-                    _DetailRow(
-                      label: 'Ваша прибыль (67%)',
-                      value: money(a.myProfitShare),
-                      valueColor: Colors.green,
-                    ),
-                    const Divider(),
-                    _DetailRow(
-                      label: 'Всего прибыли к разделу',
-                      value: money(a.totalProfit),
-                      valueColor: a.totalProfit >= 0
-                          ? Colors.green
-                          : Colors.red,
-                    ),
-                  ],
+                  )
+                else ...[
+                  DetailRow(
+                    label: 'Всего вложено партнёром',
+                    value: money(a.totalPartnerInvestment),
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Указано в машинах',
+                    value: '${a.partnerCarsCount} '
+                        '${carsLabel(a.partnerCarsCount)}',
+                  ),
+                  const Divider(),
+                  DetailRow(
+                    label: 'Доля партнёра в наличии',
+                    value: money(a.totalPartnerStock),
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Машин в наличии с долей',
+                    value: '${a.partnerCarsCountStock}',
+                  ),
+                  DetailRow(
+                    label: 'Доля партнёра в проданных',
+                    value: money(a.totalPartnerSold),
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Машин проданных с долей',
+                    value: '${a.partnerCarsCountSold}',
+                  ),
+                  const Divider(),
+                  DetailRow(
+                    label: 'Прибыль партнёра (33%)',
+                    value: money(a.partnerProfitShare),
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Ваша прибыль (67%)',
+                    value: money(a.myProfitShare),
+                    valueColor: const Color(0xFF10B981),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
-          const _SectionTitle(
+          const SectionTitle(
             text: 'Статистика по маркам',
-            icon: Icons.bar_chart,
+            icon: Icons.bar_chart_rounded,
           ),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: [
-                  if (a.brandStats.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Пока нет проданных машин',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  else ...[
-                    for (int i = 0;
-                        i < a.brandStats.length && i < 8;
-                        i++) ...[
-                      Builder(builder: (context) {
-                        final b = a.brandStats[i];
-                        final isPositive = b.totalProfit >= 0;
-                        return Padding(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 6),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+          PaddedCard(
+            child: Column(
+              children: [
+                if (a.brandStats.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Пока нет проданных машин',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                else
+                  ...a.brandStats.take(8).map((b) {
+                    final isPositive = b.totalProfit >= 0;
+                    final daysStr = '${b.avgDays.toStringAsFixed(0)} дн.';
+                    final cntStr = '${b.count} шт.';
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      b.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
+                              Expanded(
+                                child: Text(
+                                  b.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
                                   ),
-                                  Text(
-                                    '${b.count} '
-                                    '${carsLabel(b.count)}',
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                              const SizedBox(height: 2),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Прибыль: ${money(b.totalProfit)}',
-                                    style: TextStyle(
-                                      color: isPositive
-                                          ? Colors.green
-                                          : Colors.red,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  cntStr,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
                                   ),
-                                  Text(
-                                    'Ср. ${b.avgDays.t
-                                      class HomeScreen extends StatefulWidget {
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Прибыль: ${money(b.totalProfit)}',
+                                style: TextStyle(
+                                  color: isPositive
+                                      ? const Color(0xFF10B981)
+                                      : const Color(0xFFEF4444),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12.5,
+                                ),
+                              ),
+                              Text(
+                                'Ср. срок: $daysStr',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 14),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+          const SectionTitle(
+            text: 'Потенциал склада',
+            icon: Icons.lightbulb_outline,
+          ),
+          PaddedCard(
+            child: Column(
+              children: [
+                DetailRow(
+                  label: 'Вложено в наличие',
+                  value: money(a.totalInvestedStock),
+                  valueColor: const Color(0xFFFF7A45),
+                ),
+                DetailRow(
+                  label: 'Средняя маржа по проданным',
+                  value: '${a.profitability.toStringAsFixed(1)}%',
+                  valueColor: const Color(0xFF06B6D4),
+                ),
+                const Divider(),
+                DetailRow(
+                  label: 'Прогноз прибыли со склада',
+                  value: money(a.potentialProfit),
+                  valueColor: const Color(0xFF10B981),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Прогноз основан на средней рентабельности прошлых продаж.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SectionTitle(
+            text: 'Средние показатели',
+            icon: Icons.analytics_outlined,
+          ),
+          PaddedCard(
+            child: Column(
+              children: [
+                DetailRow(
+                  label: 'Средняя цена закупки',
+                  value: money(a.averagePurchase),
+                ),
+                DetailRow(
+                  label: 'Средняя цена продажи',
+                  value: money(a.averageSalePrice),
+                ),
+                DetailRow(
+                  label: 'Средняя прибыль за месяц',
+                  value: money(a.averageProfitThisMonth),
+                ),
+                DetailRow(
+                  label: 'Средняя прибыль за всё время',
+                  value: money(a.averageProfit),
+                ),
+                DetailRow(
+                  label: 'Средние вложения в машину',
+                  value: money(a.averageInvestment),
+                ),
+                DetailRow(
+                  label: 'Средний срок продажи',
+                  value: a.soldCars.isEmpty
+                      ? '—'
+                      : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
+                ),
+              ],
+            ),
+          ),
+          const SectionTitle(
+            text: 'Топ-5 расходов',
+            icon: Icons.local_gas_station_outlined,
+          ),
+          ExpensesTopCard(
+            stats: a.topExpenseCategories,
+            totalExpenses: a.totalExpenses,
+          ),
+          const SectionTitle(
+            text: 'Прибыль по месяцам',
+            icon: Icons.calendar_month_outlined,
+          ),
+          MonthlyChart(stats: a.monthlyStats),
+          const SectionTitle(
+            text: 'Лучшая и худшая машина',
+            icon: Icons.emoji_events_outlined,
+          ),
+          BestWorstCard(best: a.bestCar, worst: a.worstCar),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
@@ -2087,11 +2614,11 @@ class _HomeScreenState extends State<HomeScreen> {
   IconData _themeIcon(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.light:
-        return Icons.light_mode;
+        return Icons.light_mode_outlined;
       case ThemeMode.dark:
-        return Icons.dark_mode;
+        return Icons.dark_mode_outlined;
       default:
-        return Icons.brightness_auto;
+        return Icons.brightness_auto_outlined;
     }
   }
 
@@ -2148,7 +2675,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
   }
-    @override
+
+  @override
   Widget build(BuildContext context) {
     if (loading) {
       return const Scaffold(
@@ -2168,6 +2696,9 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Авто Профит'),
         actions: [
           PopupMenuButton<String>(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             onSelected: (value) {
               if (value == 'export') exportJson();
               if (value == 'csv') exportCsv(cars);
@@ -2184,7 +2715,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   leading: const Icon(Icons.person_outline),
                   title: Text(
                     userEmail.isEmpty ? 'Аккаунт' : userEmail,
-                    style: const TextStyle(fontSize: 13),
+                    style: const TextStyle(fontSize: 12.5),
                   ),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -2201,7 +2732,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const PopupMenuItem(
                 value: 'export',
                 child: ListTile(
-                  leading: Icon(Icons.upload_file),
+                  leading: Icon(Icons.upload_file_outlined),
                   title: Text('Экспорт JSON'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -2209,7 +2740,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const PopupMenuItem(
                 value: 'csv',
                 child: ListTile(
-                  leading: Icon(Icons.table_chart),
+                  leading: Icon(Icons.table_chart_outlined),
                   title: Text('Экспорт CSV (Excel)'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -2217,7 +2748,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const PopupMenuItem(
                 value: 'import',
                 child: ListTile(
-                  leading: Icon(Icons.download),
+                  leading: Icon(Icons.download_outlined),
                   title: Text('Импорт JSON'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -2253,29 +2784,42 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: addCar,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('Добавить'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
       body: CustomScrollView(
         slivers: [
           if (showCheckReminder)
             SliverToBoxAdapter(
               child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade100,
-                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                      const Color(0xFFF59E0B).withValues(alpha: 0.08),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.notifications_active,
-                        color: Colors.orange),
-                    const SizedBox(width: 10),
+                    const Icon(
+                      Icons.notifications_active_outlined,
+                      color: Color(0xFFF59E0B),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'Прошло $kReminderDays дня. Проверьте машины на складе.',
-                        style: const TextStyle(fontSize: 14),
+                        style: const TextStyle(fontSize: 13.5),
                       ),
                     ),
                     TextButton(
@@ -2289,22 +2833,31 @@ class _HomeScreenState extends State<HomeScreen> {
           if (a.staleCars.isNotEmpty)
             SliverToBoxAdapter(
               child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.shade200),
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFFEF4444).withValues(alpha: 0.16),
+                      const Color(0xFFEF4444).withValues(alpha: 0.06),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.30),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber, color: Colors.red),
-                    const SizedBox(width: 10),
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFEF4444),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        '${a.staleCars.length} машин(ы) '
-                        'без изменения статуса больше $kStaleDays дней',
-                        style: const TextStyle(fontSize: 14),
+                        '${a.staleCars.length} машин(ы) без изменения статуса больше $kStaleDays дней',
+                        style: const TextStyle(fontSize: 13.5),
                       ),
                     ),
                   ],
@@ -2312,156 +2865,84 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
             sliver: SliverToBoxAdapter(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const _SectionTitle(
+                  const SectionTitle(
                     text: 'Аналитика',
-                    icon: Icons.insights,
+                    icon: Icons.insights_outlined,
                   ),
-                  _AnalyticsSection(analytics: a),
-                  const SizedBox(height: 8),
+                  AnalyticsSection(analytics: a),
+                  const SizedBox(height: 10),
                 ],
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
             sliver: SliverToBoxAdapter(
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Автомобили по статусам',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...kStatuses.map((status) {
-                        final count = a.statusCounts[status] ?? 0;
-                        return Padding(
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: _statusColor(status),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    status,
-                                    style:
-                                        const TextStyle(fontSize: 14),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                '$count',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              ),
+              child: StatusesCard(analytics: a),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
             sliver: SliverToBoxAdapter(
               child: TextField(
                 controller: searchController,
                 onChanged: (v) => setState(() => search = v),
                 decoration: InputDecoration(
                   hintText: 'Поиск: марка, VIN, госномер, тег…',
-                  prefixIcon: const Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search_rounded, size: 22),
                   suffixIcon: search.isEmpty
                       ? null
                       : IconButton(
-                          icon: const Icon(Icons.close),
+                          icon: const Icon(Icons.close_rounded),
                           onPressed: () {
                             searchController.clear();
                             setState(() => search = '');
                           },
                         ),
-                  border: const OutlineInputBorder(),
-                  isDense: true,
                 ),
               ),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
             sliver: SliverToBoxAdapter(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _ModeTab(
-                      label: 'В наличии',
-                      count: a.stockCars.length,
-                      selected: listMode == 'stock',
-                      onTap: () => setState(() => listMode = 'stock'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ModeTab(
-                      label: 'Проданные',
-                      count: a.soldCars.length,
-                      selected: listMode == 'sold',
-                      onTap: () => setState(() => listMode = 'sold'),
-                    ),
-                  ),
-                ],
-              ),
+              child: _modeTabs(a),
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(20, 6, 14, 4),
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
                   Icon(
                     listMode == 'stock'
-                        ? Icons.warehouse
-                        : Icons.inventory,
+                        ? Icons.warehouse_outlined
+                        : Icons.inventory_2_outlined,
                     size: 18,
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      listMode == 'stock' ? 'В наличии' : 'Проданные',
+                      listMode == 'stock'
+                          ? 'В наличии · ${visible.length}'
+                          : 'Проданные · ${visible.length}',
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.sort),
+                    icon: const Icon(Icons.sort_rounded),
                     tooltip: 'Сортировка',
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     onSelected: (v) => setState(() => sortMode = v),
                     itemBuilder: (_) => const [
                       PopupMenuItem(
@@ -2493,131 +2974,36 @@ class _HomeScreenState extends State<HomeScreen> {
           if (visible.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        listMode == 'stock'
-                            ? Icons.directions_car_outlined
-                            : Icons.check_circle_outline,
-                        size: 64,
-                        color: theme.colorScheme.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        search.isNotEmpty
-                            ? 'Ничего не найдено'
-                            : listMode == 'stock'
-                                ? 'Нет машин в наличии'
-                                : 'Нет проданных машин',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              child: EmptyState(
+                icon: listMode == 'stock'
+                    ? Icons.directions_car_outlined
+                    : Icons.check_circle_outline,
+                title: search.isNotEmpty
+                    ? 'Ничего не найдено'
+                    : listMode == 'stock'
+                        ? 'Нет машин в наличии'
+                        : 'Нет проданных машин',
+                subtitle: listMode == 'stock'
+                    ? 'Нажмите «Добавить», чтобы создать первую карточку'
+                    : null,
               ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 110),
               sliver: SliverList.builder(
                 itemCount: visible.length,
                 itemBuilder: (context, index) {
                   final car = visible[index];
-                  return _CarListTile(
-                    car: car,
-                    onTap: () => openCar(car),
-                    onQuickExpense: () async {
-                      await showExpenseDialog(
-                        context: context,
-                        car: car,
-                        onChanged: () {
-                          setState(() {});
-                          _persist();
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _statusColor(String status) {
-  switch (status) {
-    case 'Куплен':
-      return Colors.blue;
-    case 'В ремонте':
-      return Colors.orange;
-    case 'Готов к продаже':
-      return Colors.purple;
-    case 'На продаже':
-      return Colors.teal;
-    case 'Продан':
-      return Colors.green;
-    default:
-      return Colors.grey;
-  }
-}
-
-class _ModeTab extends StatelessWidget {
-  final String label;
-  final int count;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _ModeTab({
-    required this.label,
-    required this.count,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      elevation: selected ? 2 : 0,
-      color: selected
-          ? theme.colorScheme.primaryContainer
-          : theme.colorScheme.surfaceContainerHighest,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Center(
-            child: Text(
-              '$label ($count)',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: selected
-                    ? theme.colorScheme.onPrimaryContainer
-                    : theme.colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-class _CarListTile extends StatelessWidget {
+                  return Padding(
+                    padding: const EdgeInsets.
+                      class CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
   final VoidCallback onQuickExpense;
 
-  const _CarListTile({
+  const CarListTile({
+    super.key,
     required this.car,
     required this.onTap,
     required this.onQuickExpense,
@@ -2629,30 +3015,37 @@ class _CarListTile extends StatelessWidget {
     final photos = car.photos;
     final days = car.daysInStock;
 
-    Color daysColor = Colors.green;
+    Color daysColor = const Color(0xFF10B981);
     if (car.isSold) {
       daysColor = Colors.blueGrey;
     } else if (days >= 60) {
-      daysColor = Colors.red;
+      daysColor = const Color(0xFFEF4444);
     } else if (days >= 30) {
-      daysColor = Colors.orange;
+      daysColor = const Color(0xFFF59E0B);
     }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      clipBehavior: Clip.antiAlias,
+    return Material(
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(18),
+      elevation: 0,
       child: InkWell(
         onTap: onTap,
         onLongPress: onQuickExpense,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.all(12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _PhotoThumb(
-                path: photos.isNotEmpty ? photos.first : null,
-              ),
-              const SizedBox(width: 12),
+              PhotoThumb(path: photos.isNotEmpty ? photos.first : null),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2663,109 +3056,130 @@ class _CarListTile extends StatelessWidget {
                           child: Text(
                             '${car.make} ${car.model}',
                             style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.2,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (car.isStale)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
+                              horizontal: 7,
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.red.shade100,
-                              borderRadius: BorderRadius.circular(6),
+                              color: const Color(0xFFEF4444)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(7),
                             ),
-                            child: Text(
+                            child: const Text(
                               'Залежалась',
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red.shade800,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFEF4444),
                               ),
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
-                        if (car.year.isNotEmpty) car.year,
-                        if (car.plate.isNotEmpty) car.plate,
-                        car.status,
-                      ].join(' • '),
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    const SizedBox(height: 4),
+                    StatusChip(status: car.status, compact: true),
                     if (car.tags.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Wrap(
                         spacing: 4,
                         runSpacing: 4,
-                        children: car.tags
-                            .take(3)
-                            .map(
-                              (t) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme
-                                      .secondaryContainer,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  t,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: theme.colorScheme
-                                        .onSecondaryContainer,
-                                  ),
-                                ),
+                        children: car.tags.take(3).map((t) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.secondaryContainer
+                                  .withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Text(
+                              t,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSecondaryContainer,
                               ),
-                            )
-                            .toList(),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ],
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     if (car.isSold)
-                      Text(
-                        'Прибыль: ${money(car.profit)}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: car.profit >= 0
-                              ? Colors.green
-                              : Colors.red,
-                        ),
-                      )
-                    else ...[
-                      Text(
-                        'Вложено: ${money(car.invested)}',
-                        style:
-                            const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      if (car.partnerAmount > 0)
-                        Text(
-                          'Партнёр: ${money(car.partnerAmount)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.brown,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.schedule,
-                              size: 14, color: daysColor),
+                          Icon(
+                            car.profit >= 0
+                                ? Icons.trending_up_rounded
+                                : Icons.trending_down_rounded,
+                            size: 15,
+                            color: car.profit >= 0
+                                ? const Color(0xFF10B981)
+                                : const Color(0xFFEF4444),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            money(car.profit),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: car.profit >= 0
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFFEF4444),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _miniInfo(
+                              theme,
+                              label: 'Вложено',
+                              value: money(car.invested),
+                              icon: Icons.account_balance_wallet_outlined,
+                            ),
+                          ),
+                          if (car.partnerAmount > 0)
+                            Expanded(
+                              child: _miniInfo(
+                                theme,
+                                label: 'Партнёр',
+                                value: money(car.partnerAmount),
+                                icon: Icons.handshake_outlined,
+                                color: const Color(0xFF9B5DE5),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 13,
+                            color: daysColor,
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'На складе $days дн.',
-                            style:
-                                theme.textTheme.bodySmall?.copyWith(
+                            style: TextStyle(
+                              fontSize: 11.5,
                               color: daysColor,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -2774,96 +3188,134 @@ class _CarListTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _miniInfo(
+    ThemeData theme, {
+    required String label,
+    required String value,
+    required IconData icon,
+    Color? color,
+  }) {
+    final c = color ?? theme.colorScheme.primary;
+    return Row(
+      children: [
+        Icon(icon, size: 13, color: c.withValues(alpha: 0.7)),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _PhotoThumb extends StatelessWidget {
+class PhotoThumb extends StatelessWidget {
   final String? path;
-  const _PhotoThumb({required this.path});
+  const PhotoThumb({super.key, required this.path});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const size = 72.0;
+    const size = 84.0;
 
     if (path == null || path!.isEmpty) {
       return Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.primary.withValues(alpha: 0.14),
+              theme.colorScheme.primary.withValues(alpha: 0.04),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(
-          Icons.directions_car,
-          size: 36,
+          Icons.directions_car_rounded,
+          size: 40,
           color: theme.colorScheme.primary,
         ),
       );
     }
 
+    Widget img;
     if (isCloudUrl(path!)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Image.network(
-            path!,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: theme.colorScheme.surfaceContainerHighest,
-              child: const Icon(Icons.broken_image),
-            ),
-            loadingBuilder: (_, child, progress) {
-              if (progress == null) return child;
-              return Container(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: const Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              );
-            },
-          ),
+      img = Image.network(
+        path!,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: const Icon(Icons.broken_image_outlined),
         ),
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return Container(
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        },
       );
+    } else {
+      final file = File(localPathOf(path!));
+      img = file.existsSync()
+          ? Image.file(file, fit: BoxFit.cover)
+          : Container(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: const Icon(Icons.broken_image_outlined),
+            );
     }
 
-    final file = File(localPathOf(path!));
     return ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: file.existsSync()
-            ? Image.file(file, fit: BoxFit.cover)
-            : Container(
-                color: theme.colorScheme.surfaceContainerHighest,
-                child: const Icon(Icons.broken_image),
-              ),
-      ),
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(width: size, height: size, child: img),
     );
   }
 }
 
-class _AutocompleteField extends StatelessWidget {
+class AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final String label;
   final Iterable<String> Function(String) optionsBuilder;
   final VoidCallback? onChangedCallback;
 
-  const _AutocompleteField({
+  const AutocompleteField({
+    super.key,
     required this.controller,
     required this.focusNode,
     required this.label,
@@ -2874,7 +3326,7 @@ class _AutocompleteField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: RawAutocomplete<String>(
         textEditingController: controller,
         focusNode: focusNode,
@@ -2894,9 +3346,8 @@ class _AutocompleteField extends StatelessWidget {
             onChanged: (_) => onChangedCallback?.call(),
             decoration: InputDecoration(
               labelText: label,
-              border: const OutlineInputBorder(),
               suffixIcon: IconButton(
-                icon: const Icon(Icons.clear, size: 18),
+                icon: const Icon(Icons.clear_rounded, size: 18),
                 onPressed: () {
                   c.clear();
                   onChangedCallback?.call();
@@ -2909,8 +3360,8 @@ class _AutocompleteField extends StatelessWidget {
           return Align(
             alignment: Alignment.topLeft,
             child: Material(
-              elevation: 4,
-              borderRadius: BorderRadius.circular(8),
+              elevation: 6,
+              borderRadius: BorderRadius.circular(14),
               child: ConstrainedBox(
                 constraints:
                     const BoxConstraints(maxHeight: 220, maxWidth: 320),
@@ -2924,8 +3375,8 @@ class _AutocompleteField extends StatelessWidget {
                       onTap: () => onSelected(option),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
+                          horizontal: 16,
+                          vertical: 13,
                         ),
                         child: Text(option),
                       ),
@@ -2940,7 +3391,7 @@ class _AutocompleteField extends StatelessWidget {
     );
   }
 }
-class CarFormScreen extends StatefulWidget {
+                      class CarFormScreen extends StatefulWidget {
   final Car? car;
   final void Function(Car car) onSave;
 
@@ -3061,10 +3512,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Название',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(labelText: 'Название'),
         ),
         actions: [
           TextButton(
@@ -3143,15 +3591,16 @@ class _CarFormScreenState extends State<CarFormScreen> {
     Navigator.pop(context);
   }
 
-  Widget field(
+  Widget _field(
     TextEditingController controller,
     FocusNode focusNode,
     String label, {
     bool number = false,
     int lines = 1,
+    IconData? icon,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         focusNode: focusNode,
@@ -3161,7 +3610,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
             : TextInputType.text,
         decoration: InputDecoration(
           labelText: label,
-          border: const OutlineInputBorder(),
+          prefixIcon: icon != null ? Icon(icon, size: 20) : null,
         ),
       ),
     );
@@ -3181,9 +3630,13 @@ class _CarFormScreenState extends State<CarFormScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
-          _AutocompleteField(
+          const SectionTitle(
+            text: 'Автомобиль',
+            icon: Icons.directions_car_outlined,
+          ),
+          AutocompleteField(
             controller: make,
             focusNode: makeFocus,
             label: 'Марка',
@@ -3194,7 +3647,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
             },
             onChangedCallback: () => setState(() {}),
           ),
-          _AutocompleteField(
+          AutocompleteField(
             controller: model,
             focusNode: modelFocus,
             label: 'Модель',
@@ -3214,32 +3667,41 @@ class _CarFormScreenState extends State<CarFormScreen> {
                   .where((m) => m.toLowerCase().contains(lower));
             },
           ),
-          _AutocompleteField(
+          AutocompleteField(
             controller: year,
             focusNode: yearFocus,
             label: 'Год',
             optionsBuilder: (q) =>
                 kYearList.where((y) => y.startsWith(q)),
           ),
-          field(vin, vinFocus, 'VIN'),
-          field(plate, plateFocus, 'Госномер'),
-          field(mileage, mileageFocus, 'Пробег'),
-          field(purchase, purchaseFocus, 'Цена покупки', number: true),
-          field(
+          _field(vin, vinFocus, 'VIN',
+              icon: Icons.confirmation_number_outlined),
+          _field(plate, plateFocus, 'Госномер',
+              icon: Icons.directions_car_outlined),
+          _field(mileage, mileageFocus, 'Пробег',
+              icon: Icons.speed_outlined),
+          const SectionTitle(
+            text: 'Финансы',
+            icon: Icons.account_balance_wallet_outlined,
+          ),
+          _field(purchase, purchaseFocus, 'Цена покупки',
+              number: true, icon: Icons.attach_money),
+          _field(
             partnerInvestment,
             partnerFocus,
-            'Доля партнёра (₽) — прибыль партнёра всегда 33%',
+            'Доля партнёра (₽) — прибыль 33%',
             number: true,
+            icon: Icons.handshake_outlined,
           ),
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 12),
             child: InkWell(
               onTap: pickPurchaseDate,
+              borderRadius: BorderRadius.circular(14),
               child: InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Дата покупки',
-                  border: OutlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today),
+                  suffixIcon: Icon(Icons.calendar_today_outlined),
                 ),
                 child: Text(
                   purchaseDate == null
@@ -3249,17 +3711,27 @@ class _CarFormScreenState extends State<CarFormScreen> {
               ),
             ),
           ),
-          field(seller, sellerFocus, 'Продавец (имя)'),
-          field(sellerPhone, sellerPhoneFocus, 'Телефон продавца',
-              number: true),
-          field(sellerAddress, sellerAddressFocus, 'Адрес / город'),
-          field(notes, notesFocus, 'Примечания', lines: 4),
+          const SectionTitle(
+            text: 'Продавец',
+            icon: Icons.person_outline,
+          ),
+          _field(seller, sellerFocus, 'Имя',
+              icon: Icons.person_outline),
+          _field(sellerPhone, sellerPhoneFocus, 'Телефон',
+              number: true, icon: Icons.phone_outlined),
+          _field(sellerAddress, sellerAddressFocus, 'Адрес / город',
+              icon: Icons.location_on_outlined),
+          const SectionTitle(
+            text: 'Прочее',
+            icon: Icons.notes_outlined,
+          ),
+          _field(notes, notesFocus, 'Примечания', lines: 4),
           const SizedBox(height: 4),
           DropdownButtonFormField<String>(
             initialValue: status,
             decoration: const InputDecoration(
               labelText: 'Статус',
-              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.flag_outlined, size: 20),
             ),
             items: kStatuses
                 .map((s) => DropdownMenuItem(value: s, child: Text(s)))
@@ -3268,12 +3740,12 @@ class _CarFormScreenState extends State<CarFormScreen> {
               if (value != null) setState(() => status = value);
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           const Text(
             'Метки',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -3294,18 +3766,21 @@ class _CarFormScreenState extends State<CarFormScreen> {
                 ),
               ),
               ActionChip(
-                avatar: const Icon(Icons.add, size: 18),
+                avatar: const Icon(Icons.add, size: 16),
                 label: const Text('Свой'),
                 onPressed: _addCustomTag,
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: save,
-            icon: const Icon(Icons.save),
+            icon: const Icon(Icons.check_rounded),
             label: Text(
               isEdit ? 'Сохранить изменения' : 'Сохранить автомобиль',
+            ),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
           ),
         ],
@@ -3313,7 +3788,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-class CarDetailsScreen extends StatefulWidget {
+                      class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
@@ -3432,7 +3907,9 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             child: const Text('Отмена'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+            ),
             onPressed: () {
               Navigator.pop(ctx);
               widget.onDelete();
@@ -3448,7 +3925,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
   Future<void> generateContract() async {
     await showDialog(
       context: context,
-      builder: (_) => _ContractDialog(car: widget.car),
+      builder: (_) => ContractDialog(car: widget.car),
     );
   }
 
@@ -3461,6 +3938,9 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
         title: Text('${car.make} ${car.model}'),
         actions: [
           PopupMenuButton<String>(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
             onSelected: (value) {
               if (value == 'edit') editCar();
               if (value == 'duplicate') duplicateCar();
@@ -3471,7 +3951,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
               PopupMenuItem(
                 value: 'edit',
                 child: ListTile(
-                  leading: Icon(Icons.edit),
+                  leading: Icon(Icons.edit_outlined),
                   title: Text('Редактировать'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -3479,7 +3959,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
               PopupMenuItem(
                 value: 'duplicate',
                 child: ListTile(
-                  leading: Icon(Icons.copy),
+                  leading: Icon(Icons.copy_outlined),
                   title: Text('Дублировать'),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -3487,16 +3967,19 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
               PopupMenuItem(
                 value: 'contract',
                 child: ListTile(
-                  leading: Icon(Icons.description),
+                  leading: Icon(Icons.description_outlined),
                   title: Text('Сформировать ДКП'),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
+              PopupMenuDivider(),
               PopupMenuItem(
                 value: 'delete',
                 child: ListTile(
-                  leading: Icon(Icons.delete_outline),
-                  title: Text('В корзину'),
+                  leading: Icon(Icons.delete_outline,
+                      color: Color(0xFFEF4444)),
+                  title: Text('В корзину',
+                      style: TextStyle(color: Color(0xFFEF4444))),
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -3505,89 +3988,119 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
-          _PhotosBlock(car: car, onChanged: widget.onChanged),
+          PhotosBlock(car: car, onChanged: widget.onChanged),
           const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
+          PaddedCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${car.make} ${car.model}',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ),
+                    StatusChip(status: car.status),
+                  ],
+                ),
+                if (car.tags.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: car.tags
+                        .map(
+                          (t) => Chip(
+                            label: Text(t, style: const TextStyle(fontSize: 11.5)),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ],
+                const Divider(),
+                _infoRow('Год', car.year),
+                _infoRow('VIN', car.vin),
+                _infoRow('Госномер', car.plate),
+                _infoRow('Пробег', car.mileage),
+                _infoRow(
+                  'Дата покупки',
+                  car.purchaseDate.isEmpty
+                      ? ''
+                      : formatDate(car.purchaseDateTime!),
+                ),
+                _infoRow('На складе', '${car.daysInStock} дн.'),
+                if (car.isStale)
+                  _infoRow(
+                    'В статусе',
+                    '${car.daysInCurrentStatus} дн. (залежалась)',
+                  ),
+                if (car.saleDate.isNotEmpty)
+                  _infoRow(
+                    'Дата продажи',
+                    formatDate(car.saleDateTime!),
+                  ),
+              ],
+            ),
+          ),
+          if (car.seller.isNotEmpty ||
+              car.sellerPhone.isNotEmpty ||
+              car.sellerAddress.isNotEmpty) ...[
+            const SectionTitle(
+              text: 'Продавец',
+              icon: Icons.person_outline,
+            ),
+            PaddedCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '${car.make} ${car.model}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                  if (car.seller.isNotEmpty)
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          car.seller,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  if (car.tags.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: car.tags
-                          .map(
-                            (t) => Chip(
-                              label: Text(t),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          )
-                          .toList(),
+                  if (car.sellerPhone.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.phone_outlined, size: 16),
+                        const SizedBox(width: 8),
+                        Text(car.sellerPhone),
+                      ],
                     ),
                   ],
-                  const SizedBox(height: 10),
-                  _infoRow('Год', car.year),
-                  _infoRow('VIN', car.vin),
-                  _infoRow('Госномер', car.plate),
-                  _infoRow('Пробег', car.mileage),
-                  _infoRow('Статус', car.status),
-                  _infoRow(
-                    'Дата покупки',
-                    car.purchaseDate.isEmpty
-                        ? ''
-                        : formatDate(car.purchaseDateTime!),
-                  ),
-                  _infoRow('На складе', '${car.daysInStock} дн.'),
-                  if (car.isStale)
-                    _infoRow(
-                      'В статусе',
-                      '${car.daysInCurrentStatus} дн. ⚠️',
+                  if (car.sellerAddress.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(car.sellerAddress)),
+                      ],
                     ),
-                  if (car.saleDate.isNotEmpty)
-                    _infoRow(
-                      'Дата продажи',
-                      formatDate(car.saleDateTime!),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (car.seller.isNotEmpty ||
-              car.sellerPhone.isNotEmpty ||
-              car.sellerAddress.isNotEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Продавец',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (car.seller.isNotEmpty) Text(car.seller),
-                    if (car.sellerPhone.isNotEmpty)
-                      Text('Тел: ${car.sellerPhone}'),
-                    if (car.sellerAddress.isNotEmpty)
-                      Text('Адрес: ${car.sellerAddress}'),
-                    const SizedBox(height: 8),
+                  ],
+                  if (car.sellerPhone.isNotEmpty ||
+                      car.sellerAddress.isNotEmpty) ...[
+                    const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -3595,153 +4108,140 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                         if (car.sellerPhone.isNotEmpty)
                           FilledButton.icon(
                             onPressed: _call,
-                            icon: const Icon(Icons.phone),
+                            icon: const Icon(Icons.phone, size: 18),
                             label: const Text('Позвонить'),
                           ),
                         if (car.sellerAddress.isNotEmpty)
                           OutlinedButton.icon(
                             onPressed: _openAddress,
-                            icon: const Icon(Icons.map),
+                            icon: const Icon(Icons.map_outlined, size: 18),
                             label: const Text('Карта'),
                           ),
                       ],
                     ),
                   ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Финансы',
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _financeRow('Цена покупки', car.purchase),
-                  _financeRow('Расходы', car.expensesTotal),
-                  const Divider(),
-                  _financeRow('Всего вложено', car.invested, bold: true),
-                  _financeRow(
-                    'Безубыточная цена (маржа ${money(kMinMargin)})',
-                    car.breakEvenPrice,
-                    bold: true,
-                    valueColor: Colors.orange,
-                  ),
-                  const Divider(),
-                  _financeRow('Цена продажи', car.sale),
-                  _financeRow('Прибыль', car.profit, bold: true),
-                  if (car.partnerAmount > 0) ...[
-                    const Divider(),
-                    _financeRow(
-                      'Доля партнёра',
-                      car.partnerAmount,
-                      valueColor: Colors.brown,
-                    ),
-                    _financeRow(
-                      'Прибыль партнёра (33%)',
-                      car.partnerProfit,
-                      bold: true,
-                      valueColor: Colors.brown,
-                    ),
-                    _financeRow(
-                      'Прибыль вам (67%)',
-                      car.isSold
-                          ? car.profit - car.partnerProfit
-                          : 0,
-                      bold: true,
-                      valueColor: Colors.green,
-                    ),
-                  ],
                 ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _ExpensesBlock(car: car, onChanged: widget.onChanged),
-          const SizedBox(height: 12),
-          _DocumentsBlock(car: car, onChanged: widget.onChanged),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Продажа',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: salePrice,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Цена продажи',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  InkWell(
-                    onTap: pickSaleDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Дата продажи',
-                        border: OutlineInputBorder(),
-                        suffixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        saleDate == null
-                            ? 'Не указана'
-                            : formatDate(saleDate!),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton(
-                    onPressed: saveSale,
-                    child: const Text('Сохранить продажу'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (car.notes.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Примечания',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(car.notes),
-                  ],
-                ),
               ),
             ),
           ],
-          const SizedBox(height: 30),
+          const SectionTitle(
+            text: 'Финансы',
+            icon: Icons.account_balance_wallet_outlined,
+          ),
+          PaddedCard(
+            child: Column(
+              children: [
+                DetailRow(label: 'Цена покупки', value: money(car.purchase)),
+                DetailRow(label: 'Расходы', value: money(car.expensesTotal)),
+                const Divider(),
+                DetailRow(
+                  label: 'Всего вложено',
+                  value: money(car.invested),
+                  bold: true,
+                  valueColor: const Color(0xFF4A4FC7),
+                ),
+                DetailRow(
+                  label: 'Безубыточная цена',
+                  value: money(car.breakEvenPrice),
+                  bold: true,
+                  valueColor: const Color(0xFFF59E0B),
+                ),
+                const Divider(),
+                DetailRow(label: 'Цена продажи', value: money(car.sale)),
+                DetailRow(
+                  label: 'Прибыль',
+                  value: money(car.profit),
+                  bold: true,
+                  valueColor: car.profit >= 0
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
+                ),
+                if (car.partnerAmount > 0) ...[
+                  const Divider(),
+                  DetailRow(
+                    label: 'Доля партнёра',
+                    value: money(car.partnerAmount),
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Прибыль партнёра (33%)',
+                    value: money(car.partnerProfit),
+                    bold: true,
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Прибыль вам (67%)',
+                    value: money(car.isSold ? car.myProfit : 0),
+                    bold: true,
+                    valueColor: const Color(0xFF10B981),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SectionTitle(
+            text: 'Расходы',
+            icon: Icons.receipt_long_outlined,
+          ),
+          ExpensesBlock(car: car, onChanged: widget.onChanged),
+          const SectionTitle(
+            text: 'Документы',
+            icon: Icons.folder_outlined,
+          ),
+          DocumentsBlock(car: car, onChanged: widget.onChanged),
+          const SectionTitle(
+            text: 'Продажа',
+            icon: Icons.sell_outlined,
+          ),
+          PaddedCard(
+            child: Column(
+              children: [
+                TextField(
+                  controller: salePrice,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Цена продажи',
+                    prefixIcon: Icon(Icons.attach_money),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: pickSaleDate,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Дата продажи',
+                      suffixIcon: Icon(Icons.calendar_today_outlined),
+                    ),
+                    child: Text(
+                      saleDate == null
+                          ? 'Не указана'
+                          : formatDate(saleDate!),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: saveSale,
+                  icon: const Icon(Icons.check_rounded),
+                  label: const Text('Сохранить продажу'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (car.notes.isNotEmpty) ...[
+            const SectionTitle(
+              text: 'Примечания',
+              icon: Icons.notes_outlined,
+            ),
+            PaddedCard(
+              child: Text(car.notes, style: const TextStyle(height: 1.5)),
+            ),
+          ],
         ],
       ),
     );
@@ -3750,67 +4250,72 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
   Widget _infoRow(String title, String value) {
     if (value.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Text('$title: $value'),
-    );
-  }
-
-  Widget _financeRow(
-    String title,
-    double value, {
-    bool bold = false,
-    Color? valueColor,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
+          SizedBox(
+            width: 110,
             child: Text(
               title,
               style: TextStyle(
-                fontWeight: bold ? FontWeight.bold : null,
                 fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          Text(
-            money(value),
-            style: TextStyle(
-              fontWeight: bold ? FontWeight.bold : null,
-              color: valueColor,
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
       ),
     );
   }
-                   }
-                   class _PhotosBlock extends StatelessWidget {
+}
+                      class PhotosBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
-  const _PhotosBlock({required this.car, required this.onChanged});
+  const PhotosBlock({super.key, required this.car, required this.onChanged});
 
   Future<void> _addPhoto(BuildContext context) async {
     final picker = ImagePicker();
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
             ListTile(
-              leading: const Icon(Icons.photo_library),
+              leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Из галереи'),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt),
+              leading: const Icon(Icons.camera_alt_outlined),
               title: const Text('Сделать фото'),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -3851,6 +4356,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       context: context,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(12),
         child: InteractiveViewer(
           child: isCloudUrl(path)
               ? Image.network(path)
@@ -3862,118 +4368,127 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
+    return PaddedCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.photo_library_outlined, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
                   'Фотографии',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                IconButton(
-                  onPressed: () => _addPhoto(context),
-                  icon: const Icon(Icons.add_a_photo),
+              ),
+              IconButton(
+                onPressed: () => _addPhoto(context),
+                icon: const Icon(Icons.add_a_photo_outlined),
+              ),
+            ],
+          ),
+          if (car.photos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'Фото пока нет',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-              ],
-            ),
-            if (car.photos.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Фото пока нет'),
-              )
-            else
-              SizedBox(
-                height: 110,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: car.photos.length,
-                  separatorBuilder: (_, __) =>
-                      const SizedBox(width: 8),
-                  itemBuilder: (context, index) {
-                    final path = car.photos[index];
-                    return Stack(
-                      children: [
-                        InkWell(
-                          onTap: () => _openPhoto(context, path),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: SizedBox(
-                              width: 110,
-                              height: 110,
-                              child: isCloudUrl(path)
-                                  ? Image.network(
-                                      path,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) =>
-                                          Container(
+              ),
+            )
+          else
+            SizedBox(
+              height: 108,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: car.photos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final path = car.photos[index];
+                  return Stack(
+                    children: [
+                      InkWell(
+                        onTap: () => _openPhoto(context, path),
+                        borderRadius: BorderRadius.circular(12),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            width: 108,
+                            height: 108,
+                            child: isCloudUrl(path)
+                                ? Image.network(
+                                    path,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Container(
+                                      color: Colors.black12,
+                                      child: const Icon(
+                                          Icons.broken_image_outlined),
+                                    ),
+                                  )
+                                : (File(localPathOf(path)).existsSync()
+                                    ? Image.file(
+                                        File(localPathOf(path)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Container(
                                         color: Colors.black12,
                                         child: const Icon(
-                                            Icons.broken_image),
-                                      ),
-                                    )
-                                  : (File(localPathOf(path))
-                                          .existsSync()
-                                      ? Image.file(
-                                          File(localPathOf(path)),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : Container(
-                                          color: Colors.black12,
-                                          child: const Icon(
-                                              Icons.broken_image),
-                                        )),
-                            ),
+                                            Icons.broken_image_outlined),
+                                      )),
                           ),
                         ),
-                        Positioned(
-                          top: 0,
-                          right: 0,
+                      ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Material(
+                          color: Colors.black54,
+                          shape: const CircleBorder(),
                           child: InkWell(
                             onTap: () => _removePhoto(index),
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                color: Colors.black54,
-                                shape: BoxShape.circle,
-                              ),
-                              padding: const EdgeInsets.all(4),
-                              child: const Icon(
+                            customBorder: const CircleBorder(),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(
                                 Icons.close,
-                                size: 16,
+                                size: 14,
                                 color: Colors.white,
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    );
-                  },
-                ),
+                      ),
+                    ],
+                  );
+                },
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
 }
 
-class _DocumentsBlock extends StatelessWidget {
+class DocumentsBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
-  const _DocumentsBlock({required this.car, required this.onChanged});
+  const DocumentsBlock({
+    super.key,
+    required this.car,
+    required this.onChanged,
+  });
 
   IconData _icon(String type) {
-    if (type == 'image') return Icons.image;
-    if (type == 'pdf') return Icons.picture_as_pdf;
-    return Icons.description;
+    if (type == 'image') return Icons.image_outlined;
+    if (type == 'pdf') return Icons.picture_as_pdf_outlined;
+    return Icons.description_outlined;
   }
 
   Future<void> _pick(BuildContext context, String source) async {
@@ -4062,6 +4577,7 @@ class _DocumentsBlock extends StatelessWidget {
         context: context,
         builder: (_) => Dialog(
           backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.all(12),
           child: InteractiveViewer(child: Image.file(file)),
         ),
       );
@@ -4091,12 +4607,25 @@ class _DocumentsBlock extends StatelessWidget {
   void _showAddMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 12),
             ListTile(
-              leading: const Icon(Icons.camera_alt),
+              leading: const Icon(Icons.camera_alt_outlined),
               title: const Text('Сфотографировать'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -4104,7 +4633,7 @@ class _DocumentsBlock extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library),
+              leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Из галереи'),
               onTap: () {
                 Navigator.pop(ctx);
@@ -4119,6 +4648,7 @@ class _DocumentsBlock extends StatelessWidget {
                 _pick(context, 'files');
               },
             ),
+            const SizedBox(height: 12),
           ],
         ),
       ),
@@ -4128,118 +4658,176 @@ class _DocumentsBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
+    return PaddedCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.folder_outlined, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
                   'Документы',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
                   ),
-                ),
-                IconButton(
-                  onPressed: () => _showAddMenu(context),
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-            if (car.attachments.isEmpty)
-              const Text('Документов пока нет')
-            else
-              ...car.attachments.map(
-                (a) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    _icon(a.type),
-                    color: theme.colorScheme.primary,
-                  ),
-                  title: Text(
-                    a.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(a.addedAt),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _remove(a),
-                  ),
-                  onTap: () => _open(context, a),
                 ),
               ),
-          ],
-        ),
+              IconButton(
+                onPressed: () => _showAddMenu(context),
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ],
+          ),
+          if (car.attachments.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Документов пока нет',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            ...car.attachments.map(
+              (a) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary
+                        .withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _icon(a.type),
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                title: Text(
+                  a.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  a.addedAt,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  onPressed: () => _remove(a),
+                ),
+                onTap: () => _open(context, a),
+              ),
+            ),
+        ],
       ),
     );
   }
 }
-                   class _ExpensesBlock extends StatelessWidget {
+                      class ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
-  const _ExpensesBlock({required this.car, required this.onChanged});
+  const ExpensesBlock({super.key, required this.car, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
+    final theme = Theme.of(context);
+    return PaddedCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.receipt_long_outlined, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
                   'Расходы',
                   style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => showExpenseDialog(
-                    context: context,
-                    car: car,
-                    onChanged: onChanged,
-                  ),
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
-            if (car.expenses.isEmpty)
-              const Text('Расходов пока нет')
-            else
-              ...car.expenses.map(
-                (expense) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.receipt_long),
-                  title: Text(expense.category),
-                  subtitle: Text(
-                    expense.note.isEmpty
-                        ? 'Нажмите, чтобы изменить'
-                        : expense.note,
-                  ),
-                  trailing: Text(
-                    money(expense.amount),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  onTap: () => showExpenseDialog(
-                    context: context,
-                    car: car,
-                    expense: expense,
-                    onChanged: onChanged,
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-          ],
-        ),
+              IconButton(
+                onPressed: () => showExpenseDialog(
+                  context: context,
+                  car: car,
+                  onChanged: onChanged,
+                ),
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ],
+          ),
+          if (car.expenses.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Расходов пока нет',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          else
+            ...car.expenses.map(
+              (expense) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_outlined,
+                    size: 18,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+                title: Text(
+                  expense.category,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  expense.note.isEmpty
+                      ? 'Нажмите, чтобы изменить'
+                      : expense.note,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: Text(
+                  money(expense.amount),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onTap: () => showExpenseDialog(
+                  context: context,
+                  car: car,
+                  expense: expense,
+                  onChanged: onChanged,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -4274,7 +4862,6 @@ Future<void> showExpenseDialog({
                     initialValue: category,
                     decoration: const InputDecoration(
                       labelText: 'Категория',
-                      border: OutlineInputBorder(),
                     ),
                     items: kExpenseCategories
                         .map((c) => DropdownMenuItem(
@@ -4286,25 +4873,22 @@ Future<void> showExpenseDialog({
                       if (v != null) setLocal(() => category = v);
                     },
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: amount,
                     keyboardType:
-                        const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Сумма',
-                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.attach_money),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: note,
                     maxLines: 3,
                     decoration: const InputDecoration(
                       labelText: 'Комментарий',
-                      border: OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -4320,7 +4904,7 @@ Future<void> showExpenseDialog({
                   },
                   child: const Text(
                     'Удалить',
-                    style: TextStyle(color: Colors.red),
+                    style: TextStyle(color: Color(0xFFEF4444)),
                   ),
                 ),
               TextButton(
@@ -4351,8 +4935,7 @@ Future<void> showExpenseDialog({
                   onChanged();
                   Navigator.pop(dialogContext);
                 },
-                child:
-                    Text(expense == null ? 'Добавить' : 'Сохранить'),
+                child: Text(expense == null ? 'Добавить' : 'Сохранить'),
               ),
             ],
           );
@@ -4415,7 +4998,9 @@ class _TrashScreenState extends State<TrashScreen> {
             child: const Text('Отмена'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Удалить'),
           ),
@@ -4452,49 +5037,50 @@ class _TrashScreenState extends State<TrashScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : trash.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      'Корзина пуста',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
+              ? const EmptyState(
+                  icon: Icons.delete_outline,
+                  title: 'Корзина пуста',
+                  subtitle: 'Удалённые авто хранятся здесь 30 дней',
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   itemCount: trash.length,
                   itemBuilder: (context, index) {
                     final t = trash[index];
                     final car = t.car;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: PaddedCard(
+                        padding: const EdgeInsets.all(14),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               '${car.make} ${car.model}',
                               style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Удалён: ${t.deletedAt}'
-                              ' • осталось ${t.daysLeft} дн.',
-                              style:
-                                  Theme.of(context).textTheme.bodySmall,
+                              'Удалён: ${t.deletedAt}',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 12),
                             Row(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () => _restore(t),
-                                    icon: const Icon(Icons.restore),
+                                    icon: const Icon(
+                                        Icons.restore_from_trash_outlined,
+                                        size: 18),
                                     label: const Text('Восстановить'),
                                   ),
                                 ),
@@ -4502,8 +5088,8 @@ class _TrashScreenState extends State<TrashScreen> {
                                 IconButton(
                                   onPressed: () => _deleteForever(t),
                                   icon: const Icon(
-                                    Icons.delete_forever,
-                                    color: Colors.red,
+                                    Icons.delete_forever_outlined,
+                                    color: Color(0xFFEF4444),
                                   ),
                                 ),
                               ],
@@ -4517,7 +5103,7 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-                   class HistoryEvent {
+                      class HistoryEvent {
   final DateTime date;
   final String type;
   final Car car;
@@ -4566,41 +5152,76 @@ class HistoryScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('История покупок и продаж')),
       body: events.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Пока нет ни покупок, ни продаж',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
+          ? const EmptyState(
+              icon: Icons.history,
+              title: 'Пока нет ни покупок, ни продаж',
+              subtitle: 'История появится по мере работы',
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               itemCount: events.length,
               itemBuilder: (context, index) {
                 final e = events[index];
                 final isBuy = e.type == 'Покупка';
-                final color = isBuy ? Colors.blue : Colors.green;
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: color.withValues(alpha: 0.15),
-                      child: Icon(
-                        isBuy ? Icons.shopping_cart : Icons.sell,
-                        color: color,
-                        size: 20,
-                      ),
-                    ),
-                    title: Text(
-                      '${e.type}: ${e.car.make} ${e.car.model}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      '${formatDate(e.date)} • ${money(e.amount)}',
+                final color = isBuy
+                    ? const Color(0xFF3B82F6)
+                    : const Color(0xFF10B981);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: PaddedCard(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            isBuy
+                                ? Icons.shopping_cart_outlined
+                                : Icons.sell_outlined,
+                            color: color,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${e.car.make} ${e.car.model}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14.5,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${formatDate(e.date)} · ${e.type}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          money(e.amount),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: color,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -4609,8 +5230,7 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 }
-
-class AuthScreen extends StatefulWidget {
+                      class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
@@ -4726,129 +5346,201 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(
-                    Icons.directions_car,
-                    size: 72,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Авто Профит',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    isLogin
-                        ? 'Войдите в аккаунт'
-                        : 'Создайте новый аккаунт',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autocorrect: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: passwordController,
-                    obscureText: !showPassword,
-                    textInputAction: isLogin
-                        ? TextInputAction.done
-                        : TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Пароль',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          showPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => showPassword = !showPassword,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (!isLogin) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: confirmController,
-                      obscureText: !showPassword,
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(
-                        labelText: 'Повторите пароль',
-                        prefixIcon: Icon(Icons.lock_outline),
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    const Color(0xFF1A1B2E),
+                    const Color(0xFF14151A),
+                  ]
+                : [
+                    kSeedColor.withValues(alpha: 0.16),
+                    const Color(0xFFF6F7FB),
                   ],
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: loading ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    child: loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            isLogin ? 'Войти' : 'Зарегистрироваться',
-                            style: const TextStyle(fontSize: 16),
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF4A4FC7),
+                            Color(0xFF6D72E0),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: [
+                          BoxShadow(
+                            color: kSeedColor.withValues(alpha: 0.35),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10),
                           ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton(
-                    onPressed: loading
-                        ? null
-                        : () => setState(() {
-                              isLogin = !isLogin;
-                              passwordController.clear();
-                              confirmController.clear();
-                            }),
-                    child: Text(
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.directions_car_rounded,
+                        size: 48,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'Авто Профит',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
                       isLogin
-                          ? 'Нет аккаунта? Зарегистрироваться'
-                          : 'Уже есть аккаунт? Войти',
+                          ? 'Войдите в аккаунт'
+                          : 'Создайте новый аккаунт',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  if (isLogin)
+                    const SizedBox(height: 32),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.3 : 0.06,
+                            ),
+                            blurRadius: 20,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.email_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: passwordController,
+                            obscureText: !showPassword,
+                            textInputAction: isLogin
+                                ? TextInputAction.done
+                                : TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'Пароль',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  showPassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                                onPressed: () => setState(
+                                  () => showPassword = !showPassword,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (!isLogin) ...[
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: confirmController,
+                              obscureText: !showPassword,
+                              textInputAction: TextInputAction.done,
+                              decoration: const InputDecoration(
+                                labelText: 'Повторите пароль',
+                                prefixIcon: Icon(Icons.lock_outline),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          FilledButton(
+                            onPressed: loading ? null : _submit,
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: loading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    isLogin
+                                        ? 'Войти'
+                                        : 'Зарегистрироваться',
+                                    style: const TextStyle(
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     TextButton(
-                      onPressed: loading ? null : _resetPassword,
-                      child: const Text('Забыли пароль?'),
+                      onPressed: loading
+                          ? null
+                          : () => setState(() {
+                                isLogin = !isLogin;
+                                passwordController.clear();
+                                confirmController.clear();
+                              }),
+                      child: Text(
+                        isLogin
+                            ? 'Нет аккаунта? Зарегистрироваться'
+                            : 'Уже есть аккаунт? Войти',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                ],
+                    if (isLogin)
+                      TextButton(
+                        onPressed: loading ? null : _resetPassword,
+                        child: const Text('Забыли пароль?'),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -4857,194 +5549,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
-                   class _ContractDialog extends StatefulWidget {
-  final Car car;
-  const _ContractDialog({required this.car});
-
-  @override
-  State<_ContractDialog> createState() => _ContractDialogState();
-}
-
-class _ContractDialogState extends State<_ContractDialog> {
-  final sellerFio = TextEditingController();
-  final sellerPassport = TextEditingController();
-  final sellerAddress = TextEditingController();
-  final sellerPhone = TextEditingController();
-  final buyerFio = TextEditingController();
-  final buyerPassport = TextEditingController();
-  final buyerAddress = TextEditingController();
-  final buyerPhone = TextEditingController();
-  final priceController = TextEditingController();
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    priceController.text = widget.car.sale > 0
-        ? widget.car.sale.toStringAsFixed(0)
-        : widget.car.invested.toStringAsFixed(0);
-    _load();
-  }
-
-  Future<void> _load() async {
-    final seller = await Storage.loadSellerData();
-    final buyer = await Storage.loadBuyerData();
-    sellerFio.text = seller['fio'] ?? '';
-    sellerPassport.text = seller['passport'] ?? '';
-    sellerAddress.text = seller['address'] ?? '';
-    sellerPhone.text = seller['phone'] ?? '';
-    buyerFio.text = buyer['fio'] ?? '';
-    buyerPassport.text = buyer['passport'] ?? '';
-    buyerAddress.text = buyer['address'] ?? '';
-    buyerPhone.text = buyer['phone'] ?? '';
-    if (!mounted) return;
-    setState(() => _loaded = true);
-  }
-
-  @override
-  void dispose() {
-    sellerFio.dispose();
-    sellerPassport.dispose();
-    sellerAddress.dispose();
-    sellerPhone.dispose();
-    buyerFio.dispose();
-    buyerPassport.dispose();
-    buyerAddress.dispose();
-    buyerPhone.dispose();
-    priceController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _generate() async {
-    final sellerData = {
-      'fio': sellerFio.text.trim(),
-      'passport': sellerPassport.text.trim(),
-      'address': sellerAddress.text.trim(),
-      'phone': sellerPhone.text.trim(),
-    };
-    final buyerData = {
-      'fio': buyerFio.text.trim(),
-      'passport': buyerPassport.text.trim(),
-      'address': buyerAddress.text.trim(),
-      'phone': buyerPhone.text.trim(),
-    };
-    await Storage.saveSellerData(sellerData);
-    await Storage.saveBuyerData(buyerData);
-    await saveContractHtml(widget.car, sellerData, buyerData,
-        priceController.text.trim());
-    if (!mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Договор сформирован')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_loaded) {
-      return const Dialog(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      );
-    }
-    return Dialog(
-      insetPadding: const EdgeInsets.all(12),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Договор купли-продажи',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('Авто: ${widget.car.make} ${widget.car.model}'),
-            const SizedBox(height: 12),
-            const Divider(),
-            const Text(
-              'Продавец',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            _dlgField(sellerFio, 'ФИО'),
-            _dlgField(sellerPassport, 'Паспорт (серия номер)'),
-            _dlgField(sellerAddress, 'Адрес регистрации'),
-            _dlgField(sellerPhone, 'Телефон'),
-            const SizedBox(height: 12),
-            const Divider(),
-            const Text(
-              'Покупатель',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            _dlgField(buyerFio, 'ФИО'),
-            _dlgField(buyerPassport, 'Паспорт (серия номер)'),
-            _dlgField(buyerAddress, 'Адрес регистрации'),
-            _dlgField(buyerPhone, 'Телефон'),
-            const SizedBox(height: 12),
-            const Divider(),
-            _dlgField(priceController, 'Цена продажи (₽)',
-                number: true),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Отмена'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _generate,
-                    icon: const Icon(Icons.description),
-                    label: const Text('Сформировать'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _dlgField(
-    TextEditingController c,
-    String label, {
-    bool number = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: c,
-        keyboardType: number
-            ? const TextInputType.numberWithOptions(decimal: true)
-            : TextInputType.text,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          isDense: true,
-        ),
-      ),
-    );
-  }
-}
-                   Future<void> saveContractHtml(
+                     Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -5171,8 +5676,8 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-                   }
-                   String _numToRussianWords(int n) {
+                     }
+                      String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
     '', 'один', 'два', 'три', 'четыре', 'пять',
@@ -5264,4 +5769,4 @@ ${row('Техническое состояние', 'удовлетворител
   parts.add('00 копеек');
   final joined = parts.where((x) => x.isNotEmpty).join(' ');
   return joined[0].toUpperCase() + joined.substring(1);
-                   }
+                      }
