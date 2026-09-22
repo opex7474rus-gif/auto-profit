@@ -57,7 +57,6 @@ const String kLastCheckKey = 'last_check_v1';
 const int kTrashDays = 30;
 const double kMinMargin = 30000;
 const double kPartnerProfitShare = 0.33;
-
 const Color kSeedColor = Color(0xFF4A4FC7);
 
 const Map<String, List<String>> kCarCatalog = {
@@ -97,7 +96,6 @@ const Map<String, String> kDefaultBuyerData = {
   'address': '',
   'phone': '',
 };
-
 class AppTheme {
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
@@ -159,7 +157,8 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        fillColor:
+            scheme.surfaceContainerHighest.withValues(alpha: 0.4),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -449,8 +448,7 @@ class Car {
         'photos': photos,
         'attachments': attachments.map((a) => a.toJson()).toList(),
       };
-
-  Car duplicate() {
+      Car duplicate() {
     final now = DateTime.now();
     final iso = '${now.year.toString().padLeft(4, '0')}-'
         '${now.month.toString().padLeft(2, '0')}-'
@@ -539,6 +537,7 @@ class Car {
       statusChangedAt.isNotEmpty &&
       daysInCurrentStatus >= kStaleDays;
 }
+
 class Expense {
   String id;
   String category;
@@ -575,7 +574,6 @@ String localPathOf(String s) {
   if (isLocalMarker(s)) return s.substring(6);
   return s;
 }
-
 class Storage {
   static const _key = 'cars_v1';
   static const _trashKey = 'cars_trash_v1';
@@ -685,48 +683,95 @@ class Storage {
           .toList(),
     );
   }
+    static Future<List<Car>> load() async {
+  List<Car> local = [];
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw != null && raw.isNotEmpty) {
+      final list = jsonDecode(raw) as List;
+      local = list
+          .map((e) => Car.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+  } catch (_) {}
 
-  static Future<List<Car>> load() async {
-    List<Car> local = [];
-    try {
+  try {
+    if (_uid != null) {
+      final rows = await _db
+          .from('cars')
+          .select()
+          .order('created_at', ascending: true);
+      final cars = (rows as List)
+          .map((r) => _rowToCar(r as Map<String, dynamic>))
+          .toList();
+
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_key);
-      if (raw != null && raw.isNotEmpty) {
-        final list = jsonDecode(raw) as List;
-        local = list
-            .map((e) => Car.fromJson(e as Map<String, dynamic>))
-            .toList();
+      await prefs.setString(
+        _key,
+        jsonEncode(cars.map((c) => c.toJson()).toList()),
+      );
+
+      if (await hasPending()) {
+        await save(cars);
       }
-    } catch (_) {}
 
-    try {
-      if (_uid != null) {
-        final rows = await _db
-            .from('cars')
-            .select()
-            .order('created_at', ascending: true);
-        final cars = (rows as List)
-            .map((r) => _rowToCar(r as Map<String, dynamic>))
-            .toList();
+      return cars;
+    }
+  } catch (_) {}
 
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          _key,
-          jsonEncode(cars.map((c) => c.toJson()).toList()),
-        );
+  return local;
+}
 
-        if (await hasPending()) {
-          await save(cars);
+static Future<void> save(List<Car> cars) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _key,
+      jsonEncode(cars.map((c) => c.toJson()).toList()),
+    );
+  } catch (_) {}
+
+  try {
+    if (_uid == null) return;
+
+    bool allUploaded = true;
+
+    for (final c in cars) {
+      final newPhotos = <String>[];
+      for (final ph in c.photos) {
+        if (isLocalMarker(ph)) {
+          final url = await uploadFile(
+            bucket: 'photos',
+            localPath: localPathOf(ph),
+          );
+          if (url != null) {
+            newPhotos.add(url);
+          } else {
+            newPhotos.add(ph);
+            allUploaded = false;
+          }
+        } else {
+          newPhotos.add(ph);
         }
-
-        return cars;
       }
-    } catch (_) {}
+      c.photos = newPhotos;
 
-    return local;
-  }
+      for (final a in c.attachments) {
+        if (isLocalMarker(a.path)) {
+          final url = await uploadFile(
+            bucket: 'documents',
+            localPath: localPathOf(a.path),
+          );
+          if (url != null) {
+            a.path = url;
+          } else {
+            allUploaded = false;
+          }
+        }
+      }
+    }
 
-  static Future<void> save(List<Car> cars) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
@@ -735,77 +780,28 @@ class Storage {
       );
     } catch (_) {}
 
-    try {
-      if (_uid == null) return;
+    final existingRows = await _db.from('cars').select('id');
+    final existingIds = (existingRows as List)
+        .map((r) => (r['id'] ?? '').toString())
+        .toSet();
 
-      bool allUploaded = true;
-
-      for (final c in cars) {
-        final newPhotos = <String>[];
-        for (final ph in c.photos) {
-          if (isLocalMarker(ph)) {
-            final url = await uploadFile(
-              bucket: 'photos',
-              localPath: localPathOf(ph),
-            );
-            if (url != null) {
-              newPhotos.add(url);
-            } else {
-              newPhotos.add(ph);
-              allUploaded = false;
-            }
-          } else {
-            newPhotos.add(ph);
-          }
-        }
-        c.photos = newPhotos;
-
-        for (final a in c.attachments) {
-          if (isLocalMarker(a.path)) {
-            final url = await uploadFile(
-              bucket: 'documents',
-              localPath: localPathOf(a.path),
-            );
-            if (url != null) {
-              a.path = url;
-            } else {
-              allUploaded = false;
-            }
-          }
-        }
-      }
-
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          _key,
-          jsonEncode(cars.map((c) => c.toJson()).toList()),
-        );
-      } catch (_) {}
-
-      final existingRows = await _db.from('cars').select('id');
-      final existingIds = (existingRows as List)
-          .map((r) => (r['id'] ?? '').toString())
-          .toSet();
-
-      if (cars.isNotEmpty) {
-        final rows = cars.map((c) => _carToRow(c)).toList();
-        await _db.from('cars').upsert(rows);
-      }
-
-      final localIds = cars.map((c) => c.id).toSet();
-      final toDelete = existingIds.difference(localIds).toList();
-      if (toDelete.isNotEmpty) {
-        await _db.from('cars').delete().inFilter('id', toDelete);
-      }
-
-      await setPending(!allUploaded);
-    } catch (_) {
-      await setPending(true);
+    if (cars.isNotEmpty) {
+      final rows = cars.map((c) => _carToRow(c)).toList();
+      await _db.from('cars').upsert(rows);
     }
-  }
 
-  static Future<void> clearLocalCache() async {
+    final localIds = cars.map((c) => c.id).toSet();
+    final toDelete = existingIds.difference(localIds).toList();
+    if (toDelete.isNotEmpty) {
+      await _db.from('cars').delete().inFilter('id', toDelete);
+    }
+
+    await setPending(!allUploaded);
+  } catch (_) {
+    await setPending(true);
+  }
+}
+      static Future<void> clearLocalCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
@@ -1009,7 +1005,6 @@ Future<void> exportCsv(List<Car> cars) async {
     text: 'Отчёт Авто Профит',
   );
 }
-
 class MonthStat {
   final String label;
   final double profit;
@@ -1132,8 +1127,7 @@ class Analytics {
       partnerSold.fold(0.0, (s, c) => s + c.partnerProfit);
 
   double get myProfitShare => totalProfit - partnerProfitShare;
-
-  double get potentialProfit {
+      double get potentialProfit {
     if (soldCars.isEmpty) return 0;
     final totalInvestedSoldLocal =
         soldCars.fold(0.0, (s, c) => s + c.invested);
@@ -1425,7 +1419,6 @@ class KpiCard extends StatelessWidget {
     );
   }
 }
-
 class SectionTitle extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -1940,7 +1933,8 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
             KpiCard(
               title: 'Прибыль всего',
               value: moneyShort(a.totalProfit),
-              subtitle: '${a.soldAllTimeCount} ${carsLabel(a.soldAllTimeCount)}',
+              subtitle:
+                  '${a.soldAllTimeCount} ${carsLabel(a.soldAllTimeCount)}',
               icon: Icons.trending_up,
               color: a.totalProfit >= 0
                   ? const Color(0xFF10B981)
@@ -2055,304 +2049,304 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
             ),
           ),
         ),
-        if (expanded) ...[
-          const SizedBox(height: 4),
-          const SectionTitle(
-            text: 'Общие финансы',
-            icon: Icons.receipt_long_outlined,
+          if (expanded) ...[
+  const SizedBox(height: 4),
+  const SectionTitle(
+    text: 'Общие финансы',
+    icon: Icons.receipt_long_outlined,
+  ),
+  PaddedCard(
+    child: Column(
+      children: [
+        DetailRow(
+          label: 'Вложено всего',
+          value: money(a.totalInvested),
+          valueColor: const Color(0xFF4A4FC7),
+        ),
+        DetailRow(
+          label: 'Заработано',
+          value: money(a.totalRevenue),
+          valueColor: const Color(0xFF06B6D4),
+        ),
+        const Divider(),
+        DetailRow(
+          label: 'Закупка всего',
+          value: money(a.totalPurchase),
+        ),
+        DetailRow(
+          label: 'Расходы всего',
+          value: money(a.totalExpenses),
+        ),
+        const Divider(),
+        DetailRow(
+          label: 'Закуп в наличии',
+          value: money(a.totalPurchaseStock),
+          valueColor: const Color(0xFFFF7A45),
+        ),
+        DetailRow(
+          label: 'Расходы в наличии',
+          value: money(a.totalExpensesStock),
+          valueColor: const Color(0xFFEF4444),
+        ),
+        DetailRow(
+          label: 'Всего вложено в наличие',
+          value: money(a.totalInvestedStock),
+          valueColor: const Color(0xFFF59E0B),
+        ),
+        const SizedBox(height: 4),
+        DetailRow(
+          label: 'Закуп в проданных',
+          value: money(a.totalPurchaseSold),
+        ),
+        DetailRow(
+          label: 'Расходы в проданных',
+          value: money(a.totalExpensesSold),
+        ),
+        DetailRow(
+          label: 'Всего вложено в проданные',
+          value: money(a.totalInvestedSold),
+        ),
+        const Divider(),
+        DetailRow(
+          label: 'Прибыль за месяц',
+          value: money(a.profitThisMonth),
+          valueColor: a.profitThisMonth >= 0
+              ? const Color(0xFF10B981)
+              : const Color(0xFFEF4444),
+        ),
+        DetailRow(
+          label: 'Прибыль за всё время',
+          value: money(a.totalProfit),
+          valueColor: a.totalProfit >= 0
+              ? const Color(0xFF10B981)
+              : const Color(0xFFEF4444),
+        ),
+      ],
+    ),
+  ),
+  const SectionTitle(
+    text: 'Разделение прибыли с партнёром',
+    icon: Icons.handshake_outlined,
+  ),
+  PaddedCard(
+    child: Column(
+      children: [
+        if (a.partnerCarsCount == 0)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Доля партнёра нигде не указана',
+              style: TextStyle(color: Colors.grey),
+            ),
+          )
+        else ...[
+          DetailRow(
+            label: 'Всего вложено партнёром',
+            value: money(a.totalPartnerInvestment),
+            valueColor: const Color(0xFF9B5DE5),
           ),
-          PaddedCard(
+          DetailRow(
+            label: 'Указано в машинах',
+            value: '${a.partnerCarsCount} '
+                '${carsLabel(a.partnerCarsCount)}',
+          ),
+          const Divider(),
+          DetailRow(
+            label: 'Доля партнёра в наличии',
+            value: money(a.totalPartnerStock),
+            valueColor: const Color(0xFF9B5DE5),
+          ),
+          DetailRow(
+            label: 'Машин в наличии с долей',
+            value: '${a.partnerCarsCountStock}',
+          ),
+          DetailRow(
+            label: 'Доля партнёра в проданных',
+            value: money(a.totalPartnerSold),
+            valueColor: const Color(0xFF9B5DE5),
+          ),
+          DetailRow(
+            label: 'Машин проданных с долей',
+            value: '${a.partnerCarsCountSold}',
+          ),
+          const Divider(),
+          DetailRow(
+            label: 'Прибыль партнёра (33%)',
+            value: money(a.partnerProfitShare),
+            valueColor: const Color(0xFF9B5DE5),
+          ),
+          DetailRow(
+            label: 'Ваша прибыль (67%)',
+            value: money(a.myProfitShare),
+            valueColor: const Color(0xFF10B981),
+          ),
+        ],
+      ],
+    ),
+  ),
+      const SectionTitle(
+  text: 'Статистика по маркам',
+  icon: Icons.bar_chart_rounded,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      if (a.brandStats.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            'Пока нет проданных машин',
+            style: TextStyle(color: Colors.grey),
+          ),
+        )
+      else
+        ...a.brandStats.take(8).map((b) {
+          final isPositive = b.totalProfit >= 0;
+          final daysStr = '${b.avgDays.toStringAsFixed(0)} дн.';
+          final cntStr = '${b.count} шт.';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DetailRow(
-                  label: 'Вложено всего',
-                  value: money(a.totalInvested),
-                  valueColor: const Color(0xFF4A4FC7),
-                ),
-                DetailRow(
-                  label: 'Заработано',
-                  value: money(a.totalRevenue),
-                  valueColor: const Color(0xFF06B6D4),
-                ),
-                const Divider(),
-                DetailRow(
-                  label: 'Закупка всего',
-                  value: money(a.totalPurchase),
-                ),
-                DetailRow(
-                  label: 'Расходы всего',
-                  value: money(a.totalExpenses),
-                ),
-                const Divider(),
-                DetailRow(
-                  label: 'Закуп в наличии',
-                  value: money(a.totalPurchaseStock),
-                  valueColor: const Color(0xFFFF7A45),
-                ),
-                DetailRow(
-                  label: 'Расходы в наличии',
-                  value: money(a.totalExpensesStock),
-                  valueColor: const Color(0xFFEF4444),
-                ),
-                DetailRow(
-                  label: 'Всего вложено в наличие',
-                  value: money(a.totalInvestedStock),
-                  valueColor: const Color(0xFFF59E0B),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        b.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        cntStr,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
-                DetailRow(
-                  label: 'Закуп в проданных',
-                  value: money(a.totalPurchaseSold),
-                ),
-                DetailRow(
-                  label: 'Расходы в проданных',
-                  value: money(a.totalExpensesSold),
-                ),
-                DetailRow(
-                  label: 'Всего вложено в проданные',
-                  value: money(a.totalInvestedSold),
-                ),
-                const Divider(),
-                DetailRow(
-                  label: 'Прибыль за месяц',
-                  value: money(a.profitThisMonth),
-                  valueColor: a.profitThisMonth >= 0
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFFEF4444),
-                ),
-                DetailRow(
-                  label: 'Прибыль за всё время',
-                  value: money(a.totalProfit),
-                  valueColor: a.totalProfit >= 0
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFFEF4444),
-                ),
-              ],
-            ),
-          ),
-          const SectionTitle(
-            text: 'Разделение прибыли с партнёром',
-            icon: Icons.handshake_outlined,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                if (a.partnerCarsCount == 0)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Доля партнёра нигде не указана',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                else ...[
-                  DetailRow(
-                    label: 'Всего вложено партнёром',
-                    value: money(a.totalPartnerInvestment),
-                    valueColor: const Color(0xFF9B5DE5),
-                  ),
-                  DetailRow(
-                    label: 'Указано в машинах',
-                    value: '${a.partnerCarsCount} '
-                        '${carsLabel(a.partnerCarsCount)}',
-                  ),
-                  const Divider(),
-                  DetailRow(
-                    label: 'Доля партнёра в наличии',
-                    value: money(a.totalPartnerStock),
-                    valueColor: const Color(0xFF9B5DE5),
-                  ),
-                  DetailRow(
-                    label: 'Машин в наличии с долей',
-                    value: '${a.partnerCarsCountStock}',
-                  ),
-                  DetailRow(
-                    label: 'Доля партнёра в проданных',
-                    value: money(a.totalPartnerSold),
-                    valueColor: const Color(0xFF9B5DE5),
-                  ),
-                  DetailRow(
-                    label: 'Машин проданных с долей',
-                    value: '${a.partnerCarsCountSold}',
-                  ),
-                  const Divider(),
-                  DetailRow(
-                    label: 'Прибыль партнёра (33%)',
-                    value: money(a.partnerProfitShare),
-                    valueColor: const Color(0xFF9B5DE5),
-                  ),
-                  DetailRow(
-                    label: 'Ваша прибыль (67%)',
-                    value: money(a.myProfitShare),
-                    valueColor: const Color(0xFF10B981),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SectionTitle(
-            text: 'Статистика по маркам',
-            icon: Icons.bar_chart_rounded,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                if (a.brandStats.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'Пока нет проданных машин',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  )
-                else
-                  ...a.brandStats.take(8).map((b) {
-                    final isPositive = b.totalProfit >= 0;
-                    final daysStr = '${b.avgDays.toStringAsFixed(0)} дн.';
-                    final cntStr = '${b.count} шт.';
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  b.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5,
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary
-                                      .withValues(alpha: 0.10),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  cntStr,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Прибыль: ${money(b.totalProfit)}',
-                                style: TextStyle(
-                                  color: isPositive
-                                      ? const Color(0xFF10B981)
-                                      : const Color(0xFFEF4444),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                              Text(
-                                'Ср. срок: $daysStr',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 14),
-                        ],
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Прибыль: ${money(b.totalProfit)}',
+                      style: TextStyle(
+                        color: isPositive
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFEF4444),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
                       ),
-                    );
-                  }),
+                    ),
+                    Text(
+                      'Ср. срок: $daysStr',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 14),
               ],
             ),
-          ),
-          const SectionTitle(
-            text: 'Потенциал склада',
-            icon: Icons.lightbulb_outline,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                DetailRow(
-                  label: 'Вложено в наличие',
-                  value: money(a.totalInvestedStock),
-                  valueColor: const Color(0xFFFF7A45),
-                ),
-                DetailRow(
-                  label: 'Средняя маржа по проданным',
-                  value: '${a.profitability.toStringAsFixed(1)}%',
-                  valueColor: const Color(0xFF06B6D4),
-                ),
-                const Divider(),
-                DetailRow(
-                  label: 'Прогноз прибыли со склада',
-                  value: money(a.potentialProfit),
-                  valueColor: const Color(0xFF10B981),
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'Прогноз основан на средней рентабельности прошлых продаж.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SectionTitle(
-            text: 'Средние показатели',
-            icon: Icons.analytics_outlined,
-          ),
-          PaddedCard(
-            child: Column(
-              children: [
-                DetailRow(
-                  label: 'Средняя цена закупки',
-                  value: money(a.averagePurchase),
-                ),
-                DetailRow(
-                  label: 'Средняя цена продажи',
-                  value: money(a.averageSalePrice),
-                ),
-                DetailRow(
-                  label: 'Средняя прибыль за месяц',
-                  value: money(a.averageProfitThisMonth),
-                ),
-                DetailRow(
-                  label: 'Средняя прибыль за всё время',
-                  value: money(a.averageProfit),
-                ),
-                DetailRow(
-                  label: 'Средние вложения в машину',
-                  value: money(a.averageInvestment),
-                ),
-                DetailRow(
-                  label: 'Средний срок продажи',
-                  value: a.soldCars.isEmpty
-                      ? '—'
-                      : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
-                ),
-              ],
-            ),
-          ),
-          const SectionTitle(
+          );
+        }),
+    ],
+  ),
+),
+const SectionTitle(
+  text: 'Потенциал склада',
+  icon: Icons.lightbulb_outline,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      DetailRow(
+        label: 'Вложено в наличие',
+        value: money(a.totalInvestedStock),
+        valueColor: const Color(0xFFFF7A45),
+      ),
+      DetailRow(
+        label: 'Средняя маржа по проданным',
+        value: '${a.profitability.toStringAsFixed(1)}%',
+        valueColor: const Color(0xFF06B6D4),
+      ),
+      const Divider(),
+      DetailRow(
+        label: 'Прогноз прибыли со склада',
+        value: money(a.potentialProfit),
+        valueColor: const Color(0xFF10B981),
+      ),
+      const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'Прогноз основан на средней рентабельности прошлых продаж.',
+          style: TextStyle(fontSize: 11, color: Colors.grey),
+        ),
+      ),
+    ],
+  ),
+),
+const SectionTitle(
+  text: 'Средние показатели',
+  icon: Icons.analytics_outlined,
+),
+PaddedCard(
+  child: Column(
+    children: [
+      DetailRow(
+        label: 'Средняя цена закупки',
+        value: money(a.averagePurchase),
+      ),
+      DetailRow(
+        label: 'Средняя цена продажи',
+        value: money(a.averageSalePrice),
+      ),
+      DetailRow(
+        label: 'Средняя прибыль за месяц',
+        value: money(a.averageProfitThisMonth),
+      ),
+      DetailRow(
+        label: 'Средняя прибыль за всё время',
+        value: money(a.averageProfit),
+      ),
+      DetailRow(
+        label: 'Средние вложения в машину',
+        value: money(a.averageInvestment),
+      ),
+      DetailRow(
+        label: 'Средний срок продажи',
+        value: a.soldCars.isEmpty
+            ? '—'
+            : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
+      ),
+    ],
+  ),
+),
+                        const SectionTitle(
             text: 'Топ-5 расходов',
             icon: Icons.local_gas_station_outlined,
           ),
@@ -2376,495 +2370,197 @@ class _AnalyticsSectionState extends State<AnalyticsSection> {
     );
   }
 }
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  final List<Car> cars = [];
-  bool loading = true;
-  final searchController = TextEditingController();
-  String search = '';
-  String listMode = 'stock';
-  String sortMode = 'purchaseDesc';
-  bool showCheckReminder = false;
-  int trashCount = 0;
-  RealtimeChannel? _channel;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-    _subscribeRealtime();
-  }
-
-  @override
-  void dispose() {
-    _channel?.unsubscribe();
-    searchController.dispose();
-    super.dispose();
-  }
-
-  void _subscribeRealtime() {
-    try {
-      _channel = Supabase.instance.client
-          .channel('cars_changes')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'cars',
-            callback: (payload) async {
-              final data = await Storage.load();
-              if (!mounted) return;
-              setState(() {
-                cars
-                  ..clear()
-                  ..addAll(data);
-              });
-            },
-          )
-          .subscribe();
-    } catch (_) {}
-  }
-
-  Future<void> _load() async {
-    final data = await Storage.load();
-    final trash = await Storage.loadTrash();
-    if (!mounted) return;
-    setState(() {
-      cars
-        ..clear()
-        ..addAll(data);
-      trashCount = trash.length;
-      loading = false;
-    });
-    _checkReminder();
-  }
-
-  Future<void> _checkReminder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final lastStr = prefs.getString(kLastCheckKey);
-    if (lastStr == null) {
-      await prefs.setString(kLastCheckKey, todayIso());
-      return;
-    }
-    final last = DateTime.tryParse(lastStr);
-    if (last == null) return;
-    final diff = DateTime.now().difference(last).inDays;
-    if (!mounted) return;
-    setState(() => showCheckReminder = diff >= kReminderDays);
-  }
-
-  Future<void> _dismissReminder() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(kLastCheckKey, todayIso());
-    setState(() => showCheckReminder = false);
-  }
-
-  Future<void> _persist() async => Storage.save(cars);
-
-  Analytics get analytics => Analytics(cars);
-
-  List<Car> _filter(List<Car> src) {
-    final q = search.trim().toLowerCase();
-    if (q.isEmpty) return src;
-    return src.where((c) {
-      return c.make.toLowerCase().contains(q) ||
-          c.model.toLowerCase().contains(q) ||
-          c.vin.toLowerCase().contains(q) ||
-          c.plate.toLowerCase().contains(q) ||
-          c.seller.toLowerCase().contains(q) ||
-          c.tags.any((t) => t.toLowerCase().contains(q));
-    }).toList();
-  }
-
-  List<Car> _sort(List<Car> src) {
-    final list = List<Car>.from(src);
-    switch (sortMode) {
-      case 'purchaseAsc':
-        list.sort((a, b) {
-          final da = a.purchaseDateTime ?? DateTime(2100);
-          final db = b.purchaseDateTime ?? DateTime(2100);
-          return da.compareTo(db);
-        });
-        break;
-      case 'profitDesc':
-        list.sort((a, b) => b.profit.compareTo(a.profit));
-        break;
-      case 'alpha':
-        list.sort((a, b) => '${a.make} ${a.model}'
-            .toLowerCase()
-            .compareTo('${b.make} ${b.model}'.toLowerCase()));
-        break;
-      case 'daysDesc':
-        list.sort((a, b) => b.daysInStock.compareTo(a.daysInStock));
-        break;
-      case 'purchaseDesc':
-      default:
-        list.sort((a, b) {
-          final da = a.purchaseDateTime ?? DateTime(1900);
-          final db = b.purchaseDateTime ?? DateTime(1900);
-          return db.compareTo(da);
-        });
-    }
-    return list;
-  }
-
-  void addCar() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarFormScreen(
-          onSave: (car) {
-            setState(() => cars.add(car));
-            _persist();
-          },
-        ),
-      ),
+@override
+Widget build(BuildContext context) {
+  if (loading) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 
-  void openCar(Car car) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CarDetailsScreen(
-          car: car,
-          onChanged: () {
-            if (!mounted) return;
-            setState(() {});
-            _persist();
-          },
-          onDelete: () async {
-            final trash = await Storage.loadTrash();
-            trash.add(
-              TrashEntry(car: car, deletedAt: todayIso()),
-            );
-            await Storage.saveTrash(trash);
-            if (!mounted) return;
-            setState(() {
-              cars.removeWhere((c) => c.id == car.id);
-              trashCount = trash.length;
-            });
-            _persist();
-          },
-          onDuplicate: (newCar) {
-            setState(() => cars.add(newCar));
-            _persist();
-          },
-        ),
-      ),
-    );
-  }
+  final theme = Theme.of(context);
+  final a = analytics;
+  final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
+  final visible = _sort(_filter(sourceList));
+  final userEmail =
+      Supabase.instance.client.auth.currentUser?.email ?? '';
 
-  void openTrash() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => TrashScreen(
-          onRestore: (car) {
-            setState(() => cars.add(car));
-            _persist();
-            _load();
-          },
-        ),
-      ),
-    );
-    _load();
-  }
-
-  void openHistory() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => HistoryScreen(cars: cars),
-      ),
-    );
-  }
-
-  Future<void> _logout() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Выйти из аккаунта?'),
-        content: const Text(
-          'Данные останутся в облаке и будут доступны при следующем входе.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Авто Профит'),
+      actions: [
+        PopupMenuButton<String>(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Выйти'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await Storage.clearLocalCache();
-      await Supabase.instance.client.auth.signOut();
-    }
-  }
-
-  IconData _themeIcon(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.light:
-        return Icons.light_mode_outlined;
-      case ThemeMode.dark:
-        return Icons.dark_mode_outlined;
-      default:
-        return Icons.brightness_auto_outlined;
-    }
-  }
-
-  void _cycleTheme(ThemeMode mode) {
-    final next = mode == ThemeMode.system
-        ? ThemeMode.light
-        : mode == ThemeMode.light
-            ? ThemeMode.dark
-            : ThemeMode.system;
-    themeNotifier.value = next;
-    Storage.saveTheme(next);
-  }
-
-  Future<void> exportJson() async {
-    try {
-      final data = jsonEncode(cars.map((c) => c.toJson()).toList());
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/auto_profit_backup.json');
-      await file.writeAsString(data);
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Резервная копия Авто Профит',
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка экспорта: $e')),
-      );
-    }
-  }
-
-  Future<void> importJson() async {
-    try {
-      final result = await FilePicker.platform.pickFiles();
-      if (result == null) return;
-      final path = result.files.single.path;
-      if (path == null) return;
-      final content = await File(path).readAsString();
-      final list = jsonDecode(content) as List;
-      final imported = list
-          .map((e) => Car.fromJson(e as Map<String, dynamic>))
-          .toList();
-      if (!mounted) return;
-      setState(() => cars.addAll(imported));
-      _persist();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Импортировано ${imported.length} авто')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка импорта: $e')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    final theme = Theme.of(context);
-    final a = analytics;
-    final sourceList = listMode == 'stock' ? a.stockCars : a.soldCars;
-    final visible = _sort(_filter(sourceList));
-    final userEmail =
-        Supabase.instance.client.auth.currentUser?.email ?? '';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Авто Профит'),
-        actions: [
-          PopupMenuButton<String>(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+          onSelected: (value) {
+            if (value == 'export') exportJson();
+            if (value == 'csv') exportCsv(cars);
+            if (value == 'import') importJson();
+            if (value == 'trash') openTrash();
+            if (value == 'history') openHistory();
+            if (value == 'logout') _logout();
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'account',
+              enabled: false,
+              child: ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text(
+                  userEmail.isEmpty ? 'Аккаунт' : userEmail,
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
-            onSelected: (value) {
-              if (value == 'export') exportJson();
-              if (value == 'csv') exportCsv(cars);
-              if (value == 'import') importJson();
-              if (value == 'trash') openTrash();
-              if (value == 'history') openHistory();
-              if (value == 'logout') _logout();
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'account',
-                enabled: false,
-                child: ListTile(
-                  leading: const Icon(Icons.person_outline),
-                  title: Text(
-                    userEmail.isEmpty ? 'Аккаунт' : userEmail,
-                    style: const TextStyle(fontSize: 12.5),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'history',
+              child: ListTile(
+                leading: Icon(Icons.history),
+                title: Text('История покупок/продаж'),
+                contentPadding: EdgeInsets.zero,
               ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'history',
-                child: ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('История покупок/продаж'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'export',
-                child: ListTile(
-                  leading: Icon(Icons.upload_file_outlined),
-                  title: Text('Экспорт JSON'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'csv',
-                child: ListTile(
-                  leading: Icon(Icons.table_chart_outlined),
-                  title: Text('Экспорт CSV (Excel)'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'import',
-                child: ListTile(
-                  leading: Icon(Icons.download_outlined),
-                  title: Text('Импорт JSON'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              PopupMenuItem(
-                value: 'trash',
-                child: ListTile(
-                  leading: const Icon(Icons.delete_outline),
-                  title: Text('Корзина ($trashCount)'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'logout',
-                child: ListTile(
-                  leading: Icon(Icons.logout),
-                  title: Text('Выйти из аккаунта'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ],
-          ),
-          ValueListenableBuilder<ThemeMode>(
-            valueListenable: themeNotifier,
-            builder: (context, mode, _) => IconButton(
-              tooltip: 'Тема',
-              onPressed: () => _cycleTheme(mode),
-              icon: Icon(_themeIcon(mode)),
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: addCar,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('Добавить'),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+            const PopupMenuItem(
+              value: 'export',
+              child: ListTile(
+                leading: Icon(Icons.upload_file_outlined),
+                title: Text('Экспорт JSON'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'csv',
+              child: ListTile(
+                leading: Icon(Icons.table_chart_outlined),
+                title: Text('Экспорт CSV (Excel)'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'import',
+              child: ListTile(
+                leading: Icon(Icons.download_outlined),
+                title: Text('Импорт JSON'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'trash',
+              child: ListTile(
+                leading: const Icon(Icons.delete_outline),
+                title: Text('Корзина ($trashCount)'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'logout',
+              child: ListTile(
+                leading: Icon(Icons.logout),
+                title: Text('Выйти из аккаунта'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
         ),
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, mode, _) => IconButton(
+            tooltip: 'Тема',
+            onPressed: () => _cycleTheme(mode),
+            icon: Icon(_themeIcon(mode)),
+          ),
+        ),
+      ],
+    ),
+    floatingActionButton: FloatingActionButton.extended(
+      onPressed: addCar,
+      icon: const Icon(Icons.add_rounded),
+      label: const Text('Добавить'),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
-      body: CustomScrollView(
-        slivers: [
-          if (showCheckReminder)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFFF59E0B).withValues(alpha: 0.18),
-                      const Color(0xFFF59E0B).withValues(alpha: 0.08),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.notifications_active_outlined,
-                      color: Color(0xFFF59E0B),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Прошло $kReminderDays дня. Проверьте машины на складе.',
-                        style: const TextStyle(fontSize: 13.5),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _dismissReminder,
-                      child: const Text('Ок'),
-                    ),
+    ),
+    body: CustomScrollView(
+      slivers: [
+        if (showCheckReminder)
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFFF59E0B).withValues(alpha: 0.18),
+                    const Color(0xFFF59E0B).withValues(alpha: 0.08),
                   ],
                 ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFF59E0B)
+                      .withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.notifications_active_outlined,
+                    color: Color(0xFFF59E0B),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Прошло $kReminderDays дня. Проверьте машины на складе.',
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _dismissReminder,
+                    child: const Text('Ок'),
+                  ),
+                ],
               ),
             ),
-          if (a.staleCars.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFFEF4444).withValues(alpha: 0.16),
-                      const Color(0xFFEF4444).withValues(alpha: 0.06),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFEF4444).withValues(alpha: 0.30),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Color(0xFFEF4444),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        '${a.staleCars.length} машин(ы) без изменения статуса больше $kStaleDays дней',
-                        style: const TextStyle(fontSize: 13.5),
-                      ),
-                    ),
+          ),
+        if (a.staleCars.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFFEF4444).withValues(alpha: 0.16),
+                    const Color(0xFFEF4444).withValues(alpha: 0.06),
                   ],
                 ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: const Color(0xFFEF4444)
+                      .withValues(alpha: 0.30),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFEF4444),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${a.staleCars.length} машин(ы) без изменения статуса больше $kStaleDays дней',
+                      style: const TextStyle(fontSize: 13.5),
+                    ),
+                  ),
+                ],
               ),
             ),
-          SliverPadding(
+          ),
+                    SliverPadding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
             sliver: SliverToBoxAdapter(
               child: Column(
@@ -2996,8 +2692,192 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (context, index) {
                   final car = visible[index];
                   return Padding(
-                    padding: const EdgeInsets.
-                      class CarListTile extends StatelessWidget {
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: CarListTile(
+                      car: car,
+                      onTap: () => openCar(car),
+                      onQuickExpense: () async {
+                        await showExpenseDialog(
+                          context: context,
+                          car: car,
+                          onChanged: () {
+                            setState(() {});
+                            _persist();
+                          },
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeTabs(Analytics a) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ModeTab(
+              label: 'В наличии',
+              count: a.stockCars.length,
+              selected: listMode == 'stock',
+              onTap: () => setState(() => listMode = 'stock'),
+            ),
+          ),
+          Expanded(
+            child: ModeTab(
+              label: 'Проданные',
+              count: a.soldCars.length,
+              selected: listMode == 'sold',
+              onTap: () => setState(() => listMode = 'sold'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class ModeTab extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const ModeTab({
+    super.key,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          decoration: BoxDecoration(
+            color:
+                selected ? theme.colorScheme.surface : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Center(
+            child: Text(
+              '$label · $count',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13.5,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class StatusesCard extends StatelessWidget {
+  final Analytics analytics;
+  const StatusesCard({super.key, required this.analytics});
+
+  @override
+  Widget build(BuildContext context) {
+    final a = analytics;
+    return PaddedCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Автомобили по статусам',
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...kStatuses.map((status) {
+            final count = a.statusCounts[status] ?? 0;
+            final c = statusColor(status);
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: c,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      status,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                        color: c,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+class CarListTile extends StatelessWidget {
   final Car car;
   final VoidCallback onTap;
   final VoidCallback onQuickExpense;
@@ -3044,7 +2924,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PhotoThumb(path: photos.isNotEmpty ? photos.first : null),
+              PhotoThumb(
+                path: photos.isNotEmpty ? photos.first : null,
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -3109,7 +2991,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.onSecondaryContainer,
+                                color: theme
+                                    .colorScheme.onSecondaryContainer,
                               ),
                             ),
                           );
@@ -3306,7 +3189,6 @@ class PhotoThumb extends StatelessWidget {
     );
   }
 }
-
 class AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -3391,7 +3273,8 @@ class AutocompleteField extends StatelessWidget {
     );
   }
 }
-                      class CarFormScreen extends StatefulWidget {
+
+class CarFormScreen extends StatefulWidget {
   final Car? car;
   final void Function(Car car) onSave;
 
@@ -3531,8 +3414,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       setState(() => tags.add(result));
     }
   }
-
-  void save() {
+      void save() {
     if (make.text.trim().isEmpty || model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Введите марку и модель')),
@@ -3788,7 +3670,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     );
   }
 }
-                      class CarDetailsScreen extends StatefulWidget {
+class CarDetailsScreen extends StatefulWidget {
   final Car car;
   final VoidCallback onChanged;
   final VoidCallback onDelete;
@@ -4019,7 +3901,10 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                     children: car.tags
                         .map(
                           (t) => Chip(
-                            label: Text(t, style: const TextStyle(fontSize: 11.5)),
+                            label: Text(
+                              t,
+                              style: const TextStyle(fontSize: 11.5),
+                            ),
                             visualDensity: VisualDensity.compact,
                             materialTapTargetSize:
                                 MaterialTapTargetSize.shrinkWrap,
@@ -4131,8 +4016,10 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
           PaddedCard(
             child: Column(
               children: [
-                DetailRow(label: 'Цена покупки', value: money(car.purchase)),
-                DetailRow(label: 'Расходы', value: money(car.expensesTotal)),
+                DetailRow(
+                    label: 'Цена покупки', value: money(car.purchase)),
+                DetailRow(
+                    label: 'Расходы', value: money(car.expensesTotal)),
                 const Divider(),
                 DetailRow(
                   label: 'Всего вложено',
@@ -4147,7 +4034,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   valueColor: const Color(0xFFF59E0B),
                 ),
                 const Divider(),
-                DetailRow(label: 'Цена продажи', value: money(car.sale)),
+                DetailRow(
+                    label: 'Цена продажи', value: money(car.sale)),
                 DetailRow(
                   label: 'Прибыль',
                   value: money(car.profit),
@@ -4239,7 +4127,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
               icon: Icons.notes_outlined,
             ),
             PaddedCard(
-              child: Text(car.notes, style: const TextStyle(height: 1.5)),
+              child: Text(car.notes,
+                  style: const TextStyle(height: 1.5)),
             ),
           ],
         ],
@@ -4278,7 +4167,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
     );
   }
 }
-                      class PhotosBlock extends StatelessWidget {
+class PhotosBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -4734,7 +4623,7 @@ class DocumentsBlock extends StatelessWidget {
     );
   }
 }
-                      class ExpensesBlock extends StatelessWidget {
+class ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -4944,7 +4833,6 @@ Future<void> showExpenseDialog({
     },
   );
 }
-
 class TrashScreen extends StatefulWidget {
   final void Function(Car) onRestore;
 
@@ -5103,7 +4991,8 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-                      class HistoryEvent {
+
+class HistoryEvent {
   final DateTime date;
   final String type;
   final Car car;
@@ -5230,7 +5119,7 @@ class HistoryScreen extends StatelessWidget {
     );
   }
 }
-                      class AuthScreen extends StatefulWidget {
+class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
   @override
@@ -5549,7 +5438,198 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
-                     Future<void> saveContractHtml(
+class ContractDialog extends StatefulWidget {
+  final Car car;
+  const ContractDialog({super.key, required this.car});
+
+  @override
+  State<ContractDialog> createState() => _ContractDialogState();
+}
+
+class _ContractDialogState extends State<ContractDialog> {
+  final sellerFio = TextEditingController();
+  final sellerPassport = TextEditingController();
+  final sellerAddress = TextEditingController();
+  final sellerPhone = TextEditingController();
+  final buyerFio = TextEditingController();
+  final buyerPassport = TextEditingController();
+  final buyerAddress = TextEditingController();
+  final buyerPhone = TextEditingController();
+  final priceController = TextEditingController();
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    priceController.text = widget.car.sale > 0
+        ? widget.car.sale.toStringAsFixed(0)
+        : widget.car.invested.toStringAsFixed(0);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final seller = await Storage.loadSellerData();
+    final buyer = await Storage.loadBuyerData();
+    sellerFio.text = seller['fio'] ?? '';
+    sellerPassport.text = seller['passport'] ?? '';
+    sellerAddress.text = seller['address'] ?? '';
+    sellerPhone.text = seller['phone'] ?? '';
+    buyerFio.text = buyer['fio'] ?? '';
+    buyerPassport.text = buyer['passport'] ?? '';
+    buyerAddress.text = buyer['address'] ?? '';
+    buyerPhone.text = buyer['phone'] ?? '';
+    if (!mounted) return;
+    setState(() => _loaded = true);
+  }
+
+  @override
+  void dispose() {
+    sellerFio.dispose();
+    sellerPassport.dispose();
+    sellerAddress.dispose();
+    sellerPhone.dispose();
+    buyerFio.dispose();
+    buyerPassport.dispose();
+    buyerAddress.dispose();
+    buyerPhone.dispose();
+    priceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final sellerData = {
+      'fio': sellerFio.text.trim(),
+      'passport': sellerPassport.text.trim(),
+      'address': sellerAddress.text.trim(),
+      'phone': sellerPhone.text.trim(),
+    };
+    final buyerData = {
+      'fio': buyerFio.text.trim(),
+      'passport': buyerPassport.text.trim(),
+      'address': buyerAddress.text.trim(),
+      'phone': buyerPhone.text.trim(),
+    };
+    await Storage.saveSellerData(sellerData);
+    await Storage.saveBuyerData(buyerData);
+    await saveContractHtml(widget.car, sellerData, buyerData,
+        priceController.text.trim());
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Договор сформирован')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Договор купли-продажи',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${widget.car.make} ${widget.car.model}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Divider(height: 24),
+            const Text(
+              'Продавец',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _dlgField(sellerFio, 'ФИО'),
+            _dlgField(sellerPassport, 'Паспорт'),
+            _dlgField(sellerAddress, 'Адрес регистрации'),
+            _dlgField(sellerPhone, 'Телефон'),
+            const Divider(height: 24),
+            const Text(
+              'Покупатель',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _dlgField(buyerFio, 'ФИО'),
+            _dlgField(buyerPassport, 'Паспорт'),
+            _dlgField(buyerAddress, 'Адрес регистрации'),
+            _dlgField(buyerPhone, 'Телефон'),
+            const Divider(height: 24),
+            _dlgField(priceController, 'Цена продажи (₽)', number: true),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _generate,
+                    icon: const Icon(Icons.description_outlined, size: 18),
+                    label: const Text('Сформировать'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dlgField(
+    TextEditingController c,
+    String label, {
+    bool number = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: c,
+        keyboardType: number
+            ? const TextInputType.numberWithOptions(decimal: true)
+            : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -5676,8 +5756,9 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-                     }
-                      String _numToRussianWords(int n) {
+}
+
+String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
     '', 'один', 'два', 'три', 'четыре', 'пять',
@@ -5769,4 +5850,4 @@ ${row('Техническое состояние', 'удовлетворител
   parts.add('00 копеек');
   final joined = parts.where((x) => x.isNotEmpty).join(' ');
   return joined[0].toUpperCase() + joined.substring(1);
-                      }
+}
