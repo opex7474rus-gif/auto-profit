@@ -226,6 +226,7 @@ class Car {
   String notes;
   String salePrice;
   String saleDate;
+  String partnerInvestment;
   List<String> tags;
   List<Expense> expenses;
   List<String> photos;
@@ -249,6 +250,7 @@ class Car {
     required this.notes,
     required this.salePrice,
     required this.saleDate,
+    required this.partnerInvestment,
     required this.tags,
     required this.expenses,
     required this.photos,
@@ -274,6 +276,7 @@ class Car {
       notes: (json['notes'] ?? '') as String,
       salePrice: (json['salePrice'] ?? '') as String,
       saleDate: (json['saleDate'] ?? '') as String,
+      partnerInvestment: (json['partnerInvestment'] ?? '') as String,
       tags: ((json['tags'] ?? []) as List)
           .map((e) => e.toString())
           .toList(),
@@ -307,6 +310,7 @@ class Car {
         'notes': notes,
         'salePrice': salePrice,
         'saleDate': saleDate,
+        'partnerInvestment': partnerInvestment,
         'tags': tags,
         'expenses': expenses.map((e) => e.toJson()).toList(),
         'photos': photos,
@@ -336,6 +340,7 @@ class Car {
       notes: notes,
       salePrice: '',
       saleDate: '',
+      partnerInvestment: partnerInvestment,
       tags: List<String>.from(tags),
       expenses: [],
       photos: [],
@@ -348,6 +353,9 @@ class Car {
 
   double get sale =>
       double.tryParse(salePrice.replaceAll(',', '.')) ?? 0;
+
+  double get partnerAmount =>
+      double.tryParse(partnerInvestment.replaceAll(',', '.')) ?? 0;
 
   double get expensesTotal =>
       expenses.fold(0, (sum, item) => sum + item.amount);
@@ -497,6 +505,7 @@ class Storage {
       'notes': c.notes,
       'sale_price': c.salePrice,
       'sale_date': c.saleDate,
+      'partner_investment': c.partnerInvestment,
       'tags': c.tags,
       'expenses': c.expenses.map((e) => e.toJson()).toList(),
       'photos': c.photos,
@@ -523,6 +532,7 @@ class Storage {
       notes: (r['notes'] ?? '') as String,
       salePrice: (r['sale_price'] ?? '') as String,
       saleDate: (r['sale_date'] ?? '') as String,
+      partnerInvestment: (r['partner_investment'] ?? '') as String,
       tags: ((r['tags'] ?? []) as List)
           .map((e) => e.toString())
           .toList(),
@@ -627,7 +637,6 @@ class Storage {
         }
       }
 
-      // Обновляем локальный кеш уже после загрузки файлов
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(
@@ -821,8 +830,8 @@ Future<void> exportCsv(List<Car> cars) async {
   final buf = StringBuffer();
   buf.writeln(
     'Марка;Модель;Год;VIN;Госномер;Статус;Метки;Дата покупки;'
-    'Дней на складе;Дней в статусе;Цена покупки;Расходы;Всего вложено;'
-    'Безубыточная цена;Цена продажи;Дата продажи;Прибыль',
+    'Дней на складе;Цена покупки;Расходы;Всего вложено;'
+    'Доля партнёра;Цена продажи;Дата продажи;Прибыль',
   );
   for (final c in cars) {
     buf.writeln([
@@ -835,11 +844,10 @@ Future<void> exportCsv(List<Car> cars) async {
       c.tags.join(', '),
       c.purchaseDate,
       c.daysInStock,
-      c.daysInCurrentStatus,
       c.purchase.toStringAsFixed(0),
       c.expensesTotal.toStringAsFixed(0),
       c.invested.toStringAsFixed(0),
-      c.breakEvenPrice.toStringAsFixed(0),
+      c.partnerAmount.toStringAsFixed(0),
       c.sale.toStringAsFixed(0),
       c.saleDate,
       c.profit.toStringAsFixed(0),
@@ -908,6 +916,13 @@ class Analytics {
       stockCars.fold(0, (s, c) => s + c.expensesTotal);
   double get totalExpensesSold =>
       soldCars.fold(0, (s, c) => s + c.expensesTotal);
+
+  double get totalPartnerInvestment =>
+      cars.fold(0.0, (s, c) => s + c.partnerAmount);
+  double get totalPartnerStock =>
+      stockCars.fold(0.0, (s, c) => s + c.partnerAmount);
+  double get totalPartnerSold =>
+      soldCars.fold(0.0, (s, c) => s + c.partnerAmount);
 
   double get totalInvested => totalPurchase + totalExpenses;
   double get totalInvestedStock =>
@@ -1427,6 +1442,13 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               color: Colors.blue,
             ),
             _KpiCard(
+              title: 'Доля партнёра',
+              value: moneyShort(a.totalPartnerInvestment),
+              subtitle: '${a.stockCars.length} машин',
+              icon: Icons.handshake,
+              color: Colors.brown,
+            ),
+            _KpiCard(
               title: 'Заработано',
               value: moneyShort(a.totalRevenue),
               subtitle: 'выручка от продаж',
@@ -1536,6 +1558,11 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     value: money(a.totalInvested),
                     valueColor: Colors.blue,
                   ),
+                  _DetailRow(
+                    label: 'Всего вложено партнёром',
+                    value: money(a.totalPartnerInvestment),
+                    valueColor: Colors.brown,
+                  ),
                   const SizedBox(height: 6),
                   _DetailRow(
                     label: 'Вложено в наличие',
@@ -1543,8 +1570,18 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     valueColor: Colors.orange,
                   ),
                   _DetailRow(
+                    label: 'Доля партнёра в наличии',
+                    value: money(a.totalPartnerStock),
+                    valueColor: Colors.brown,
+                  ),
+                  _DetailRow(
                     label: 'Вложено в проданные',
                     value: money(a.totalInvestedSold),
+                  ),
+                  _DetailRow(
+                    label: 'Доля партнёра в проданных',
+                    value: money(a.totalPartnerSold),
+                    valueColor: Colors.brown,
                   ),
                   const Divider(),
                   _DetailRow(
@@ -2536,6 +2573,14 @@ class _CarListTile extends StatelessWidget {
                         style:
                             const TextStyle(fontWeight: FontWeight.w500),
                       ),
+                      if (car.partnerAmount > 0)
+                        Text(
+                          'Партнёр: ${money(car.partnerAmount)}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.brown,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       const SizedBox(height: 2),
                       Row(
                         children: [
@@ -2748,6 +2793,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final sellerPhone = TextEditingController();
   final sellerAddress = TextEditingController();
   final notes = TextEditingController();
+  final partnerInvestment = TextEditingController();
 
   final makeFocus = FocusNode();
   final modelFocus = FocusNode();
@@ -2760,6 +2806,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final sellerPhoneFocus = FocusNode();
   final sellerAddressFocus = FocusNode();
   final notesFocus = FocusNode();
+  final partnerFocus = FocusNode();
 
   String status = 'Куплен';
   DateTime? purchaseDate;
@@ -2783,6 +2830,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       sellerPhone.text = c.sellerPhone;
       sellerAddress.text = c.sellerAddress;
       notes.text = c.notes;
+      partnerInvestment.text = c.partnerInvestment;
       status = c.status;
       purchaseDate = c.purchaseDateTime;
       tags.addAll(c.tags);
@@ -2804,6 +2852,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     sellerPhone.dispose();
     sellerAddress.dispose();
     notes.dispose();
+    partnerInvestment.dispose();
     makeFocus.dispose();
     modelFocus.dispose();
     yearFocus.dispose();
@@ -2815,6 +2864,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     sellerPhoneFocus.dispose();
     sellerAddressFocus.dispose();
     notesFocus.dispose();
+    partnerFocus.dispose();
     super.dispose();
   }
 
@@ -2886,6 +2936,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       c.sellerPhone = sellerPhone.text.trim();
       c.sellerAddress = sellerAddress.text.trim();
       c.notes = notes.text.trim();
+      c.partnerInvestment = partnerInvestment.text.trim();
       c.tags = tags.toList();
       widget.onSave(c);
     } else {
@@ -2908,6 +2959,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           notes: notes.text.trim(),
           salePrice: '',
           saleDate: '',
+          partnerInvestment: partnerInvestment.text.trim(),
           tags: tags.toList(),
           expenses: [],
           photos: [],
@@ -3000,6 +3052,12 @@ class _CarFormScreenState extends State<CarFormScreen> {
           field(plate, plateFocus, 'Госномер'),
           field(mileage, mileageFocus, 'Пробег'),
           field(purchase, purchaseFocus, 'Цена покупки', number: true),
+          field(
+            partnerInvestment,
+            partnerFocus,
+            'Доля партнёра (₽)',
+            number: true,
+          ),
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: InkWell(
@@ -3399,6 +3457,12 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   const Divider(),
                   _financeRow('Всего вложено', car.invested, bold: true),
                   _financeRow(
+                    'Доля партнёра',
+                    car.partnerAmount,
+                    bold: true,
+                    valueColor: Colors.brown,
+                  ),
+                  _financeRow(
                     'Безубыточная цена (маржа ${money(kMinMargin)})',
                     car.breakEvenPrice,
                     bold: true,
@@ -3790,9 +3854,9 @@ class _DocumentsBlock extends StatelessWidget {
     final path = a.path;
     if (isCloudUrl(path)) {
       final uri = Uri.parse(path);
-      if (await canLaunchUrl(uri)) {
+      try {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      } catch (_) {}
       return;
     }
     final file = File(localPathOf(path));
@@ -4919,7 +4983,6 @@ ${row('Техническое состояние', 'удовлетворител
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
 }
-
 String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
