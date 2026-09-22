@@ -15,7 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSupabaseUrl = 'https://sqawuzstldgjmllwwtci.supabase.co';
 const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NzAxMjQsImV4cCI6MjA3NjM0NjEyNH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWW58bjCxXtRVkJlLo';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWw58bjCxXtRVkJJLo';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
