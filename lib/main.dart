@@ -16,7 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 const String kSupabaseUrl = 'https://sqawuzstldgjmllwwtci.supabase.co';
 const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWw58bjCxXtRVkJJLo';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNxYXd1enN0bGRnam1sbHd3dGNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzg1NzAsImV4cCI6MjEwNTYxNDU3MH0.2qVrtZ9GnJMFZf8yFRbrjqxKpDWW58bjCxXtRVkJJLo';
 
 final ValueNotifier<ThemeMode> themeNotifier =
     ValueNotifier(ThemeMode.system);
@@ -367,6 +367,8 @@ class Car {
 
   double get partnerProfit =>
       partnerAmount > 0 ? profit * kPartnerProfitShare : 0;
+
+  double get myProfit => profit - partnerProfit;
 
   bool get isSold => sale > 0;
 
@@ -893,6 +895,21 @@ class CategoryStat {
   CategoryStat({required this.name, required this.amount});
 }
 
+class BrandStat {
+  final String name;
+  final int count;
+  final double totalProfit;
+  final double avgProfit;
+  final double avgDays;
+  BrandStat({
+    required this.name,
+    required this.count,
+    required this.totalProfit,
+    required this.avgProfit,
+    required this.avgDays,
+  });
+}
+
 class Analytics {
   final List<Car> cars;
 
@@ -981,6 +998,43 @@ class Analytics {
 
   double get partnerProfitShare =>
       partnerSold.fold(0.0, (s, c) => s + c.partnerProfit);
+
+  double get myProfitShare => totalProfit - partnerProfitShare;
+
+  double get potentialProfit {
+    if (soldCars.isEmpty) return 0;
+    final totalInvestedSoldLocal =
+        soldCars.fold(0.0, (s, c) => s + c.invested);
+    if (totalInvestedSoldLocal == 0) return 0;
+    final margin = totalProfit / totalInvestedSoldLocal;
+    return totalInvestedStock * margin;
+  }
+
+  List<BrandStat> get brandStats {
+    final map = <String, List<Car>>{};
+    for (final c in soldCars) {
+      final brand = c.make.trim().isEmpty ? 'Без марки' : c.make.trim();
+      map.putIfAbsent(brand, () => []).add(c);
+    }
+    final list = map.entries.map((e) {
+      final listCars = e.value;
+      final total = listCars.fold(0.0, (s, c) => s + c.profit);
+      final avg = listCars.isEmpty ? 0.0 : total / listCars.length;
+      final avgD = listCars.isEmpty
+          ? 0.0
+          : listCars.map((c) => c.daysInStock).reduce((a, b) => a + b) /
+              listCars.length;
+      return BrandStat(
+        name: e.key,
+        count: listCars.length,
+        totalProfit: total,
+        avgProfit: avg,
+        avgDays: avgD,
+      );
+    }).toList();
+    list.sort((a, b) => b.totalProfit.compareTo(a.totalProfit));
+    return list;
+  }
 
   Car? get bestCar {
     if (soldCars.isEmpty) return null;
@@ -1463,30 +1517,23 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
           mainAxisSpacing: 8,
           children: [
             _KpiCard(
-              title: 'Вложено всего',
-              value: moneyShort(a.totalInvested),
-              subtitle: 'закуп + расходы',
-              icon: Icons.account_balance_wallet,
-              color: Colors.blue,
-            ),
-            _KpiCard(
-              title: 'Доля партнёра',
-              value: a.partnerCarsCount == 0
+              title: 'Доля партнёра в наличии',
+              value: a.partnerCarsCountStock == 0
                   ? '—'
-                  : moneyShort(a.totalPartnerInvestment),
-              subtitle: a.partnerCarsCount == 0
+                  : moneyShort(a.totalPartnerStock),
+              subtitle: a.partnerCarsCountStock == 0
                   ? 'нигде не указана'
-                  : 'в ${a.partnerCarsCount} '
-                      '${carsLabel(a.partnerCarsCount)}',
+                  : 'в ${a.partnerCarsCountStock} '
+                      '${carsLabel(a.partnerCarsCountStock)}',
               icon: Icons.handshake,
               color: Colors.brown,
             ),
             _KpiCard(
-              title: 'Заработано',
-              value: moneyShort(a.totalRevenue),
-              subtitle: 'выручка от продаж',
-              icon: Icons.savings,
-              color: Colors.teal,
+              title: 'В наличии',
+              value: '${a.stockCars.length}',
+              subtitle: moneyShort(a.totalInvestedStock),
+              icon: Icons.directions_car,
+              color: Colors.orange,
             ),
             _KpiCard(
               title: 'Прибыль за месяц',
@@ -1502,6 +1549,15 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               subtitle: '${a.soldAllTimeCount} за всё время',
               icon: Icons.trending_up,
               color: a.totalProfit >= 0 ? Colors.green : Colors.red,
+            ),
+            _KpiCard(
+              title: 'Прибыль партнёра',
+              value: a.partnerProfitShare == 0
+                  ? '—'
+                  : moneyShort(a.partnerProfitShare),
+              subtitle: 'Вам: ${moneyShort(a.myProfitShare)}',
+              icon: Icons.account_balance,
+              color: Colors.teal,
             ),
             _KpiCard(
               title: 'Средняя за месяц',
@@ -1577,7 +1633,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
         if (expanded) ...[
           const SizedBox(height: 8),
           const _SectionTitle(
-            text: 'Детализация',
+            text: 'Общие финансы',
             icon: Icons.receipt_long,
           ),
           Card(
@@ -1585,6 +1641,17 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
+                  _DetailRow(
+                    label: 'Вложено всего',
+                    value: money(a.totalInvested),
+                    valueColor: Colors.blue,
+                  ),
+                  _DetailRow(
+                    label: 'Заработано',
+                    value: money(a.totalRevenue),
+                    valueColor: Colors.teal,
+                  ),
+                  const Divider(),
                   _DetailRow(
                     label: 'Закупка всего',
                     value: money(a.totalPurchase),
@@ -1594,12 +1661,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     value: money(a.totalExpenses),
                   ),
                   const Divider(),
-                  _DetailRow(
-                    label: 'Итого вложено',
-                    value: money(a.totalInvested),
-                    valueColor: Colors.blue,
-                  ),
-                  const SizedBox(height: 6),
                   _DetailRow(
                     label: 'Закуп в наличии',
                     value: money(a.totalPurchaseStock),
@@ -1630,11 +1691,6 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                   ),
                   const Divider(),
                   _DetailRow(
-                    label: 'Выручка от продаж',
-                    value: money(a.totalRevenue),
-                    valueColor: Colors.teal,
-                  ),
-                  _DetailRow(
                     label: 'Прибыль за этот месяц',
                     value: money(a.profitThisMonth),
                     valueColor: a.profitThisMonth >= 0
@@ -1653,7 +1709,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ),
           const _SectionTitle(
-            text: 'Доля партнёра',
+            text: 'Разделение прибыли с партнёром',
             icon: Icons.handshake,
           ),
           Card(
@@ -1682,7 +1738,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     ),
                     const Divider(),
                     _DetailRow(
-                      label: 'Доля в наличии',
+                      label: 'Доля партнёра в наличии',
                       value: money(a.totalPartnerStock),
                       valueColor: Colors.brown,
                     ),
@@ -1692,7 +1748,7 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     ),
                     const SizedBox(height: 6),
                     _DetailRow(
-                      label: 'Доля в проданных',
+                      label: 'Доля партнёра в проданных',
                       value: money(a.totalPartnerSold),
                       valueColor: Colors.brown,
                     ),
@@ -1702,9 +1758,20 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
                     ),
                     const Divider(),
                     _DetailRow(
-                      label: 'Прибыль партнёра (33% от прибыли)',
+                      label: 'Прибыль партнёра (33%)',
                       value: money(a.partnerProfitShare),
-                      valueColor: a.partnerProfitShare >= 0
+                      valueColor: Colors.brown,
+                    ),
+                    _DetailRow(
+                      label: 'Ваша прибыль (67%)',
+                      value: money(a.myProfitShare),
+                      valueColor: Colors.green,
+                    ),
+                    const Divider(),
+                    _DetailRow(
+                      label: 'Всего прибыли к разделу',
+                      value: money(a.totalProfit),
+                      valueColor: a.totalProfit >= 0
                           ? Colors.green
                           : Colors.red,
                     ),
@@ -1714,75 +1781,75 @@ class _AnalyticsSectionState extends State<_AnalyticsSection> {
             ),
           ),
           const _SectionTitle(
-            text: 'Средние показатели',
-            icon: Icons.analytics,
+            text: 'Статистика по маркам',
+            icon: Icons.bar_chart,
           ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
-                  _DetailRow(
-                    label: 'Средняя цена закупки',
-                    value: money(a.averagePurchase),
-                  ),
-                  _DetailRow(
-                    label: 'Средняя цена продажи',
-                    value: money(a.averageSalePrice),
-                  ),
-                  _DetailRow(
-                    label: 'Средняя прибыль за месяц',
-                    value: money(a.averageProfitThisMonth),
-                    valueColor: a.averageProfitThisMonth >= 0
-                        ? Colors.green
-                        : Colors.red,
-                  ),
-                  _DetailRow(
-                    label: 'Средняя прибыль за всё время',
-                    value: money(a.averageProfit),
-                    valueColor: a.averageProfit >= 0
-                        ? Colors.green
-                        : Colors.red,
-                  ),
-                  _DetailRow(
-                    label: 'Средние вложения в машину',
-                    value: money(a.averageInvestment),
-                  ),
-                  _DetailRow(
-                    label: 'Средний срок продажи',
-                    value: a.soldCars.isEmpty
-                        ? '—'
-                        : '${a.averageDaysToSell.toStringAsFixed(1)} дн.',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const _SectionTitle(
-            text: 'Топ-5 расходов по категориям',
-            icon: Icons.local_gas_station,
-          ),
-          _ExpensesTopCard(
-            stats: a.topExpenseCategories,
-            totalExpenses: a.totalExpenses,
-          ),
-          const _SectionTitle(
-            text: 'Прибыль по месяцам',
-            icon: Icons.calendar_month,
-          ),
-          _MonthlyChart(stats: a.monthlyStats),
-          const _SectionTitle(
-            text: 'Лучшая и худшая машина',
-            icon: Icons.emoji_events,
-          ),
-          _BestWorstCard(best: a.bestCar, worst: a.worstCar),
-          const SizedBox(height: 12),
-        ],
-      ],
-    );
-  }
-}
-class HomeScreen extends StatefulWidget {
+                  if (a.brandStats.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Пока нет проданных машин',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    )
+                  else ...[
+                    for (int i = 0;
+                        i < a.brandStats.length && i < 8;
+                        i++) ...[
+                      Builder(builder: (context) {
+                        final b = a.brandStats[i];
+                        final isPositive = b.totalProfit >= 0;
+                        return Padding(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 6),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      b.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${b.count} '
+                                    '${carsLabel(b.count)}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Прибыль: ${money(b.totalProfit)}',
+                                    style: TextStyle(
+                                      color: isPositive
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Ср. ${b.avgDays.t
+                                      class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
@@ -2081,7 +2148,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
   }
-      @override
+    @override
   Widget build(BuildContext context) {
     if (loading) {
       return const Scaffold(
@@ -3719,8 +3786,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       ),
     );
   }
-}
-class _PhotosBlock extends StatelessWidget {
+                   }
+                   class _PhotosBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -4112,7 +4179,7 @@ class _DocumentsBlock extends StatelessWidget {
     );
   }
 }
-class _ExpensesBlock extends StatelessWidget {
+                   class _ExpensesBlock extends StatelessWidget {
   final Car car;
   final VoidCallback onChanged;
 
@@ -4450,7 +4517,7 @@ class _TrashScreenState extends State<TrashScreen> {
     );
   }
 }
-class HistoryEvent {
+                   class HistoryEvent {
   final DateTime date;
   final String type;
   final Car car;
@@ -4790,7 +4857,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 }
-class _ContractDialog extends StatefulWidget {
+                   class _ContractDialog extends StatefulWidget {
   final Car car;
   const _ContractDialog({required this.car});
 
@@ -4977,7 +5044,7 @@ class _ContractDialogState extends State<_ContractDialog> {
     );
   }
 }
-Future<void> saveContractHtml(
+                   Future<void> saveContractHtml(
   Car car,
   Map<String, String> seller,
   Map<String, String> buyer,
@@ -5104,8 +5171,8 @@ ${row('Техническое состояние', 'удовлетворител
   final file = File(p.join(contractsDir.path, fileName));
   await file.writeAsString(html);
   await OpenFilex.open(file.path);
-}
-String _numToRussianWords(int n) {
+                   }
+                   String _numToRussianWords(int n) {
   if (n == 0) return 'ноль рублей 00 копеек';
   final units = [
     '', 'один', 'два', 'три', 'четыре', 'пять',
@@ -5197,4 +5264,4 @@ String _numToRussianWords(int n) {
   parts.add('00 копеек');
   final joined = parts.where((x) => x.isNotEmpty).join(' ');
   return joined[0].toUpperCase() + joined.substring(1);
-}
+                   }
