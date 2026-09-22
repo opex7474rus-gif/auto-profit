@@ -49,15 +49,46 @@ class Analytics {
         return isSameMonth(d, DateTime.now());
       }).toList();
 
+  List<Car> get soldPrevMonth {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month - 1, 1);
+    final end = DateTime(now.year, now.month, 1);
+    return soldCars.where((c) {
+      final d = c.saleDateTime;
+      if (d == null) return false;
+      return !d.isBefore(start) && d.isBefore(end);
+    }).toList();
+  }
+
   int get soldThisMonthCount => soldThisMonth.length;
   int get soldAllTimeCount => soldCars.length;
 
   double get profitThisMonth =>
       soldThisMonth.fold(0.0, (s, c) => s + c.profit);
 
+  double get profitPrevMonth =>
+      soldPrevMonth.fold(0.0, (s, c) => s + c.profit);
+
+  double get trendDiff => profitThisMonth - profitPrevMonth;
+
+  double? get trendPercent {
+    if (profitPrevMonth == 0) return null;
+    return (trendDiff / profitPrevMonth) * 100;
+  }
+
   double get averageProfitThisMonth => soldThisMonthCount == 0
       ? 0
       : profitThisMonth / soldThisMonthCount;
+
+  double get avgMarginThisMonthPercent {
+    if (soldThisMonth.isEmpty) return 0;
+    final invested =
+        soldThisMonth.fold(0.0, (s, c) => s + c.invested);
+    if (invested == 0) return 0;
+    return (profitThisMonth / invested) * 100;
+  }
+
+  int get staleCountStock => staleCars.length;
 
   double get totalPurchase => cars.fold(0, (s, c) => s + c.purchase);
   double get totalExpenses =>
@@ -83,6 +114,10 @@ class Analytics {
 
   double get averageProfit =>
       soldCars.isEmpty ? 0 : totalProfit / soldCars.length;
+
+  double get avgMarginAllPercent => totalInvestedSold == 0
+      ? 0
+      : (totalProfit / totalInvestedSold) * 100;
 
   double get averagePurchase =>
       cars.isEmpty ? 0 : totalPurchase / cars.length;
