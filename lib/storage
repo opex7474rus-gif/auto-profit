@@ -120,3 +120,237 @@ class Storage {
           .toList(),
     );
   }
+  static Future<List<Car>> load() async {
+    List<Car> local = [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_key);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List;
+        local = list
+            .map((e) => Car.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+
+    try {
+      if (_uid != null) {
+        final rows = await _db
+            .from('cars')
+            .select()
+            .order('created_at', ascending: true);
+        final cars = (rows as List)
+            .map((r) => _rowToCar(r as Map<String, dynamic>))
+            .toList();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _key,
+          jsonEncode(cars.map((c) => c.toJson()).toList()),
+        );
+
+        if (await hasPending()) {
+          await save(cars);
+        }
+
+        return cars;
+      }
+    } catch (_) {}
+
+    return local;
+  }
+
+  static Future<void> save(List<Car> cars) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _key,
+        jsonEncode(cars.map((c) => c.toJson()).toList()),
+      );
+    } catch (_) {}
+
+    try {
+      if (_uid == null) return;
+
+      bool allUploaded = true;
+
+      for (final c in cars) {
+        final newPhotos = <String>[];
+        for (final ph in c.photos) {
+          if (isLocalMarker(ph)) {
+            final url = await uploadFile(
+              bucket: 'photos',
+              localPath: localPathOf(ph),
+            );
+            if (url != null) {
+              newPhotos.add(url);
+            } else {
+              newPhotos.add(ph);
+              allUploaded = false;
+            }
+          } else {
+            newPhotos.add(ph);
+          }
+        }
+        c.photos = newPhotos;
+
+        for (final a in c.attachments) {
+          if (isLocalMarker(a.path)) {
+            final url = await uploadFile(
+              bucket: 'documents',
+              localPath: localPathOf(a.path),
+            );
+            if (url != null) {
+              a.path = url;
+            } else {
+              allUploaded = false;
+            }
+          }
+        }
+      }
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          _key,
+          jsonEncode(cars.map((c) => c.toJson()).toList()),
+        );
+      } catch (_) {}
+
+      final existingRows = await _db.from('cars').select('id');
+      final existingIds = (existingRows as List)
+          .map((r) => (r['id'] ?? '').toString())
+          .toSet();
+
+      if (cars.isNotEmpty) {
+        final rows = cars.map((c) => _carToRow(c)).toList();
+        await _db.from('cars').upsert(rows);
+      }
+
+      final localIds = cars.map((c) => c.id).toSet();
+      final toDelete = existingIds.difference(localIds).toList();
+      if (toDelete.isNotEmpty) {
+        await _db.from('cars').delete().inFilter('id', toDelete);
+      }
+
+      await setPending(!allUploaded);
+    } catch (_) {
+      await setPending(true);
+    }
+  }
+
+  static Future<void> clearLocalCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_key);
+      await prefs.remove(_trashKey);
+      await prefs.remove(_pendingKey);
+    } catch (_) {}
+  }
+
+  static Future<List<TrashEntry>> loadTrash() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_trashKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List;
+      return list
+          .map((e) => TrashEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveTrash(List<TrashEntry> trash) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _trashKey,
+      jsonEncode(trash.map((t) => t.toJson()).toList()),
+    );
+  }
+
+  static Future<void> cleanupTrash() async {
+    final trash = await loadTrash();
+    final now = DateTime.now();
+    final cleaned = <TrashEntry>[];
+    for (final t in trash) {
+      final d = DateTime.tryParse(t.deletedAt);
+      if (d == null) continue;
+      if (now.difference(d).inDays < kTrashDays) {
+        cleaned.add(t);
+      } else {
+        for (final path in t.car.photos) {
+          if (isCloudUrl(path)) continue;
+          try {
+            final f = File(localPathOf(path));
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+        }
+        for (final a in t.car.attachments) {
+          if (isCloudUrl(a.path)) continue;
+          try {
+            final f = File(localPathOf(a.path));
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+        }
+      }
+    }
+    await saveTrash(cleaned);
+  }
+
+  static Future<ThemeMode> loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_themeKey);
+    switch (raw) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static Future<void> saveTheme(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = mode == ThemeMode.light
+        ? 'light'
+        : mode == ThemeMode.dark
+            ? 'dark'
+            : 'system';
+    await prefs.setString(_themeKey, raw);
+  }
+
+  static Future<Map<String, String>> loadPartyData(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) return Map.from(kDefaultBuyerData);
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {
+      return Map.from(kDefaultBuyerData);
+    }
+  }
+
+  static Future<void> savePartyData(
+    String key,
+    Map<String, String> data,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(data));
+  }
+
+  static Future<Map<String, String>> loadSellerData() =>
+      loadPartyData(_sellerKey);
+
+  static Future<void> saveSellerData(Map<String, String> data) =>
+      savePartyData(_sellerKey, data);
+
+  static Future<Map<String, String>> loadBuyerData() =>
+      loadPartyData(_buyerKey);
+
+  static Future<void> saveBuyerData(Map<String, String> data) =>
+      savePartyData(_buyerKey, data);
+}
