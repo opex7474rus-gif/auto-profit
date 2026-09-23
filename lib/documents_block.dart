@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
@@ -10,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'car.dart';
 import 'models.dart';
+import 'storage.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
 
@@ -30,9 +32,10 @@ class DocumentsBlock extends StatelessWidget {
   }
 
   Future<void> _pick(BuildContext context, String source) async {
-    String? srcPath;
     String name = '';
     String type = 'other';
+    List<int>? bytes;
+    String? mobilePath;
 
     if (source == 'camera' || source == 'gallery') {
       final picker = ImagePicker();
@@ -44,15 +47,20 @@ class DocumentsBlock extends StatelessWidget {
         maxWidth: 2000,
       );
       if (picked == null) return;
-      srcPath = picked.path;
-      name = p.basename(picked.path);
+      name = picked.name;
       type = 'image';
+      if (kIsWeb) {
+        bytes = await picked.readAsBytes();
+      } else {
+        mobilePath = picked.path;
+      }
     } else {
-      final result = await FilePicker.platform.pickFiles();
+      final result = await FilePicker.platform.pickFiles(
+        withData: kIsWeb,
+      );
       if (result == null) return;
-      srcPath = result.files.single.path;
-      if (srcPath == null) return;
-      name = result.files.single.name;
+      final file = result.files.single;
+      name = file.name;
       final ext = p.extension(name).toLowerCase();
       if (ext == '.pdf') {
         type = 'pdf';
@@ -68,39 +76,88 @@ class DocumentsBlock extends StatelessWidget {
       } else {
         type = 'other';
       }
+      if (kIsWeb) {
+        bytes = file.bytes;
+      } else {
+        mobilePath = file.path;
+      }
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final docsDir = Directory(p.join(dir.path, 'documents'));
-    if (!await docsDir.exists()) await docsDir.create(recursive: true);
-    final newPath = p.join(
-      docsDir.path,
-      'doc_${DateTime.now().microsecondsSinceEpoch}'
-      '${p.extension(srcPath)}',
-    );
-    await File(srcPath).copy(newPath);
-
-    car.attachments.add(
-      Attachment(
-        id: newId(),
-        name: name,
-        path: 'local:$newPath',
-        type: type,
-        addedAt: todayIso(),
-      ),
-    );
+    if (kIsWeb) {
+      // На web — сразу загружаем в облако
+      if (bytes == null) return;
+      final url = await Storage.uploadBytes(
+        bucket: 'documents',
+        bytes: bytes,
+        filename: name,
+      );
+      if (url == null) return;
+      car.attachments.add(
+        Attachment(
+          id: newId(),
+          name: name,
+          path: url,
+          type: type,
+          addedAt: todayIso(),
+        ),
+      );
+    } else {
+      // На мобильных — сохраняем локально
+      if (mobilePath == null) return;
+      final dir = await getApplicationDocumentsDirectory();
+      final docsDir = Directory(p.join(dir.path, 'documents'));
+      if (!await docsDir.exists()) {
+        await docsDir.create(recursive: true);
+      }
+      final newPath = p.join(
+        docsDir.path,
+        'doc_${DateTime.now().microsecondsSinceEpoch}'
+        '${p.extension(mobilePath)}',
+      );
+      await File(mobilePath).copy(newPath);
+      car.attachments.add(
+        Attachment(
+          id: newId(),
+          name: name,
+          path: 'local:$newPath',
+          type: type,
+          addedAt: todayIso(),
+        ),
+      );
+    }
     onChanged();
   }
 
   Future<void> _open(BuildContext context, Attachment a) async {
     final path = a.path;
+
     if (isCloudUrl(path)) {
+      if (kIsWeb) {
+        final uri = Uri.parse(path);
+        await launchUrl(uri, webOnlyWindowName: '_blank');
+        return;
+      }
+      if (a.type == 'image') {
+        if (!context.mounted) return;
+        await showDialog(
+          context: context,
+          builder: (_) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(12),
+            child: InteractiveViewer(child: Image.network(path)),
+          ),
+        );
+        return;
+      }
       final uri = Uri.parse(path);
       try {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } catch (_) {}
       return;
     }
+
+    if (kIsWeb) return;
+
     final file = File(localPathOf(path));
     if (!await file.exists()) {
       if (!context.mounted) return;
@@ -132,7 +189,7 @@ class DocumentsBlock extends StatelessWidget {
   }
 
   Future<void> _remove(Attachment a) async {
-    if (!isCloudUrl(a.path)) {
+    if (!isCloudUrl(a.path) && !kIsWeb) {
       try {
         final f = File(localPathOf(a.path));
         if (await f.exists()) await f.delete();
@@ -162,14 +219,15 @@ class DocumentsBlock extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Сфотографировать'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pick(context, 'camera');
-              },
-            ),
+            if (!kIsWeb)
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Сфотографировать'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pick(context, 'camera');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('Из галереи'),
