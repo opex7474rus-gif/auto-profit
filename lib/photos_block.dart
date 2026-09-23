@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'car.dart';
+import 'storage.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
 
@@ -41,38 +43,63 @@ class PhotosBlock extends StatelessWidget {
               title: const Text('Из галереи'),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Сделать фото'),
-              onTap: () => Navigator.pop(ctx, ImageSource.camera),
-            ),
+            if (!kIsWeb)
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Сделать фото'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
             const SizedBox(height: 12),
           ],
         ),
       ),
     );
     if (source == null) return;
+
     final picked = await picker.pickImage(
       source: source,
       imageQuality: 75,
       maxWidth: 1600,
     );
     if (picked == null) return;
-    final dir = await getApplicationDocumentsDirectory();
-    final photosDir = Directory(p.join(dir.path, 'photos'));
-    if (!await photosDir.exists()) await photosDir.create(recursive: true);
-    final newPath = p.join(
-      photosDir.path,
-      'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
-    );
-    await File(picked.path).copy(newPath);
-    car.photos.add('local:$newPath');
+
+    if (kIsWeb) {
+      // На web — сразу загружаем в облако
+      final bytes = await picked.readAsBytes();
+      final url = await Storage.uploadBytes(
+        bucket: 'photos',
+        bytes: bytes,
+        filename: picked.name,
+      );
+      if (url == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось загрузить фото')),
+          );
+        }
+        return;
+      }
+      car.photos.add(url);
+    } else {
+      // На мобильных — сохраняем локально, потом при save() улетит в облако
+      final dir = await getApplicationDocumentsDirectory();
+      final photosDir = Directory(p.join(dir.path, 'photos'));
+      if (!await photosDir.exists()) {
+        await photosDir.create(recursive: true);
+      }
+      final newPath = p.join(
+        photosDir.path,
+        'photo_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      );
+      await File(picked.path).copy(newPath);
+      car.photos.add('local:$newPath');
+    }
     onChanged();
   }
 
   Future<void> _removePhoto(int index) async {
     final path = car.photos[index];
-    if (!isCloudUrl(path)) {
+    if (!isCloudUrl(path) && !kIsWeb) {
       try {
         final f = File(localPathOf(path));
         if (await f.exists()) await f.delete();
@@ -94,6 +121,33 @@ class PhotosBlock extends StatelessWidget {
               : Image.file(File(localPathOf(path))),
         ),
       ),
+    );
+  }
+
+  Widget _photoImage(String path) {
+    if (isCloudUrl(path)) {
+      return Image.network(
+        path,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          color: Colors.black12,
+          child: const Icon(Icons.broken_image_outlined),
+        ),
+      );
+    }
+    if (kIsWeb) {
+      return Container(
+        color: Colors.black12,
+        child: const Icon(Icons.broken_image_outlined),
+      );
+    }
+    final file = File(localPathOf(path));
+    if (file.existsSync()) {
+      return Image.file(file, fit: BoxFit.cover);
+    }
+    return Container(
+      color: Colors.black12,
+      child: const Icon(Icons.broken_image_outlined),
     );
   }
 
@@ -152,26 +206,7 @@ class PhotosBlock extends StatelessWidget {
                           child: SizedBox(
                             width: 108,
                             height: 108,
-                            child: isCloudUrl(path)
-                                ? Image.network(
-                                    path,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => Container(
-                                      color: Colors.black12,
-                                      child: const Icon(
-                                          Icons.broken_image_outlined),
-                                    ),
-                                  )
-                                : (File(localPathOf(path)).existsSync()
-                                    ? Image.file(
-                                        File(localPathOf(path)),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : Container(
-                                        color: Colors.black12,
-                                        child: const Icon(
-                                            Icons.broken_image_outlined),
-                                      )),
+                            child: _photoImage(path),
                           ),
                         ),
                       ),
