@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/material.dart';
 
 import 'car.dart';
 import 'constants.dart';
@@ -22,10 +23,13 @@ class Storage {
   static SupabaseClient get _db => Supabase.instance.client;
   static String? get _uid => _db.auth.currentUser?.id;
 
+  /// Загрузка файла по локальному пути — только Android/iOS.
+  /// На web не используется, там работает [uploadBytes].
   static Future<String?> uploadFile({
     required String bucket,
     required String localPath,
   }) async {
+    if (kIsWeb) return null;
     try {
       final uid = _uid;
       if (uid == null) return null;
@@ -35,6 +39,29 @@ class Storage {
       final name =
           '$uid/${DateTime.now().microsecondsSinceEpoch}${ext.isEmpty ? '.bin' : ext}';
       await _db.storage.from(bucket).upload(name, f);
+      return _db.storage.from(bucket).getPublicUrl(name);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Загрузка файла из байтов — работает на всех платформах,
+  /// включая Web (там файл — это Uint8List из браузера).
+  static Future<String?> uploadBytes({
+    required String bucket,
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    try {
+      final uid = _uid;
+      if (uid == null) return null;
+      final ext = p.extension(filename).toLowerCase();
+      final name =
+          '$uid/${DateTime.now().microsecondsSinceEpoch}${ext.isEmpty ? '.bin' : ext}';
+      await _db.storage.from(bucket).uploadBinary(
+            name,
+            bytes is Uint8List ? bytes : Uint8List.fromList(bytes),
+          );
       return _db.storage.from(bucket).getPublicUrl(name);
     } catch (_) {
       return null;
@@ -120,7 +147,7 @@ class Storage {
           .toList(),
     );
   }
-  static Future<List<Car>> load() async {
+    static Future<List<Car>> load() async {
     List<Car> local = [];
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -174,36 +201,38 @@ class Storage {
 
       bool allUploaded = true;
 
-      for (final c in cars) {
-        final newPhotos = <String>[];
-        for (final ph in c.photos) {
-          if (isLocalMarker(ph)) {
-            final url = await uploadFile(
-              bucket: 'photos',
-              localPath: localPathOf(ph),
-            );
-            if (url != null) {
-              newPhotos.add(url);
+      if (!kIsWeb) {
+        for (final c in cars) {
+          final newPhotos = <String>[];
+          for (final ph in c.photos) {
+            if (isLocalMarker(ph)) {
+              final url = await uploadFile(
+                bucket: 'photos',
+                localPath: localPathOf(ph),
+              );
+              if (url != null) {
+                newPhotos.add(url);
+              } else {
+                newPhotos.add(ph);
+                allUploaded = false;
+              }
             } else {
               newPhotos.add(ph);
-              allUploaded = false;
             }
-          } else {
-            newPhotos.add(ph);
           }
-        }
-        c.photos = newPhotos;
+          c.photos = newPhotos;
 
-        for (final a in c.attachments) {
-          if (isLocalMarker(a.path)) {
-            final url = await uploadFile(
-              bucket: 'documents',
-              localPath: localPathOf(a.path),
-            );
-            if (url != null) {
-              a.path = url;
-            } else {
-              allUploaded = false;
+          for (final a in c.attachments) {
+            if (isLocalMarker(a.path)) {
+              final url = await uploadFile(
+                bucket: 'documents',
+                localPath: localPathOf(a.path),
+              );
+              if (url != null) {
+                a.path = url;
+              } else {
+                allUploaded = false;
+              }
             }
           }
         }
@@ -271,6 +300,7 @@ class Storage {
   }
 
   static Future<void> cleanupTrash() async {
+    if (kIsWeb) return;
     final trash = await loadTrash();
     final now = DateTime.now();
     final cleaned = <TrashEntry>[];
