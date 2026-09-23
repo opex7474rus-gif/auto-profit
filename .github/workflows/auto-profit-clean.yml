@@ -178,18 +178,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Ensure launcher icon
-        run: |
-          mkdir -p assets
-          if [ ! -f assets/icon.png ]; then
-            convert -size 1024x1024 xc:'#1565C0' \
-              -gravity center -fill white -pointsize 400 \
-              -annotate 0 'AP' assets/icon.png
-          fi
-
-      - name: Generate launcher icons
-        run: dart run flutter_launcher_icons
-
       - name: Build Web
         run: flutter build web --release --base-href=/auto-profit/
 
