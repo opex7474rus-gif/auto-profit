@@ -5,11 +5,12 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  build:
+  build_android:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,7 +87,6 @@ jobs:
           import re, pathlib
           p = pathlib.Path("android/app/build.gradle.kts")
           src = p.read_text()
-
           if "signingConfigs" not in src:
               block = '''
               signingConfigs {
@@ -104,7 +104,6 @@ jobs:
               }
               '''
               src = src.replace("android {", "android {" + block, 1)
-
           if "signingConfig = signingConfigs.getByName" not in src:
               src = re.sub(
                   r'(release\s*\{)',
@@ -112,7 +111,6 @@ jobs:
                   src,
                   count=1,
               )
-
           p.write_text(src)
           print("build.gradle.kts обновлён")
           PY
@@ -152,3 +150,54 @@ jobs:
           name: auto-profit-apk-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
+
+  build_web:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.2"
+          channel: stable
+          cache: true
+
+      - name: Ensure web folder exists
+        run: |
+          mkdir -p web
+          if [ ! -f web/index.html ]; then
+            echo "web/index.html отсутствует — создаём дефолтный"
+            flutter create . --platforms=web --project-name auto_profit
+          fi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Ensure launcher icon
+        run: |
+          mkdir -p assets
+          if [ ! -f assets/icon.png ]; then
+            convert -size 1024x1024 xc:'#1565C0' \
+              -gravity center -fill white -pointsize 400 \
+              -annotate 0 'AP' assets/icon.png
+          fi
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
+      - name: Build Web
+        run: flutter build web --release --base-href=/auto-profit/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
