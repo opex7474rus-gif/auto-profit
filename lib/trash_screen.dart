@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'car.dart';
+import 'partner.dart';
+import 'partner_storage.dart';
 import 'storage.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
@@ -36,6 +38,21 @@ class _TrashScreenState extends State<TrashScreen> {
   }
 
   Future<void> _restore(TrashEntry t) async {
+    // Возвращаем долю партнёра в работу как «внёс».
+    final amount = t.car.partnerAmount;
+    if (amount > 0) {
+      await PartnerStorage.saveTransaction(
+        PartnerTransaction(
+          id: newId(),
+          type: 'in',
+          amount: amount,
+          note:
+              'Возврат из корзины по машине: ${t.car.make} ${t.car.model}',
+          date: todayIso(),
+        ),
+      );
+    }
+
     trash.removeWhere((x) => x.car.id == t.car.id);
     await Storage.saveTrash(trash);
     widget.onRestore(t.car);
