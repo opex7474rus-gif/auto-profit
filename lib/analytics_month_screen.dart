@@ -89,14 +89,14 @@ class AnalyticsMonthScreen extends StatelessWidget {
               ),
             )
           else
-            ...soldList.map((c) => _soldTile(c)),
+            ...soldList.map((c) => _soldTile(context, c)),
 
           // РАЗБИВКА ПО МАРКАМ
           const SectionTitle(
             text: 'Прибыль по маркам за месяц',
             icon: Icons.bar_chart_rounded,
           ),
-          _brandBreakdown(soldList),
+          _brandBreakdown(context, soldList),
         ],
       ),
     );
@@ -232,7 +232,8 @@ class AnalyticsMonthScreen extends StatelessWidget {
       ),
     );
   }
-    Widget _soldTile(Car c) {
+
+  Widget _soldTile(BuildContext context, Car c) {
     final days = c.daysInStock;
     final positive = c.profit >= 0;
     final color = positive
@@ -321,7 +322,7 @@ class AnalyticsMonthScreen extends StatelessWidget {
     );
   }
 
-  Widget _brandBreakdown(List<Car> soldList) {
+  Widget _brandBreakdown(BuildContext context, List<Car> soldList) {
     if (soldList.isEmpty) {
       return PaddedCard(
         child: Padding(
