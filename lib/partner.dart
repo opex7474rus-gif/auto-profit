@@ -68,29 +68,25 @@ class PartnerSettings {
 
 /// Итоговый расчёт по партнёру.
 ///
-/// Формула баланса:
-///   (Внёс − Забрал) + Прибыль партнёра − Его доля в машинах в наличии
-///
-///   > 0 → вы должны партнёру
-///   < 0 → партнёр должен вам
-///   = 0 → всё сошлось
+/// Модель «общак»: все деньги партнёра делятся на
+/// свободные (можно забрать) и замороженные (в машинах).
 class PartnerBalance {
-  /// Сколько партнёр вложил в конкретные машины (сумма долей).
+  /// Σ его долей по всем машинам.
   final double investedInCars;
 
-  /// Сколько его денег сейчас в машинах в наличии.
+  /// Σ его долей по машинам в наличии (заморожено).
   final double inWorkNow;
 
-  /// Сколько его денег вернулось (по проданным машинам).
+  /// Σ его долей по проданным (вернулось в общак).
   final double returned;
 
-  /// Сколько прибыли ему причитается (по проданным машинам).
+  /// Σ его прибыли по проданным (лежит в общаке).
   final double profitShare;
 
-  /// Сколько он внёс вручную (операции «in»).
+  /// Σ операций «Внёс» (руками).
   final double manualIn;
 
-  /// Сколько он забрал вручную (операции «out»).
+  /// Σ операций «Забрал» (руками).
   final double manualOut;
 
   const PartnerBalance({
@@ -102,30 +98,16 @@ class PartnerBalance {
     required this.manualOut,
   });
 
-  /// Всего он внёс (в машины + вручную).
-  double get totalIn => investedInCars + manualIn;
+  /// Свободные деньги партнёра в общаке — можно забрать.
+  double get freeInPot =>
+      returned + profitShare + manualIn - manualOut;
 
-  /// Всего он забрал (возврат + вручную).
-  double get totalOut => returned + manualOut;
+  /// Заморожено в машинах на складе.
+  double get frozenInCars => inWorkNow;
 
-  /// Сколько его денег в обороте (в машинах в наличии).
-  double get availableInWork => inWorkNow;
+  /// Всего денег партнёра в бизнесе.
+  double get totalInBusiness => freeInPot + frozenInCars;
 
-  /// Его общая претензия к бизнесу:
-  /// физически внесённое − забранное + заработанная прибыль.
-  double get partnerClaim => manualIn - manualOut + profitShare;
-
-  /// Итоговый баланс.
-  /// Положительный — вы должны партнёру.
-  /// Отрицательный — партнёр должен вам.
-  double get balance => partnerClaim - inWorkNow;
-
-  /// Свободные деньги партнёра (положительное — вы должны ему).
-  double get freeBalance => balance > 0 ? balance : 0;
-
-  /// Долг партнёра перед вами (положительное — он должен).
-  double get debtToYou => balance < 0 ? -balance : 0;
-
-  /// Сколько вы должны партнёру (положительное — вы должны).
-  double get youOwe => balance > 0 ? balance : 0;
+  /// Если он забрал больше, чем имел — сколько остался должен.
+  double get overspent => freeInPot < 0 ? -freeInPot : 0;
 }
