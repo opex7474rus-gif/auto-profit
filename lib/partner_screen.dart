@@ -206,8 +206,7 @@ class _PartnerScreenState extends State<PartnerScreen> {
       setState(() => transactions.insert(0, tx));
     }
   }
-
-  Future<void> _deleteTransaction(PartnerTransaction tx) async {
+    Future<void> _deleteTransaction(PartnerTransaction tx) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -263,11 +262,9 @@ class _PartnerScreenState extends State<PartnerScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
         children: [
-          // ГЛАВНАЯ КАРТОЧКА — БАЛАНС
           _mainBalanceCard(b),
           const SizedBox(height: 16),
 
-          // КНОПКИ ДЕЙСТВИЙ
           Row(
             children: [
               Expanded(
@@ -297,7 +294,6 @@ class _PartnerScreenState extends State<PartnerScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ДЕТАЛИ
           const SectionTitle(
             text: 'Детализация',
             icon: Icons.receipt_long_outlined,
@@ -351,7 +347,6 @@ class _PartnerScreenState extends State<PartnerScreen> {
             ),
           ),
 
-          // ИСТОРИЯ ОПЕРАЦИЙ
           const SectionTitle(
             text: 'История операций',
             icon: Icons.history,
@@ -360,11 +355,28 @@ class _PartnerScreenState extends State<PartnerScreen> {
             PaddedCard(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Text(
-                  'Операций пока нет',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Операций пока нет',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Если партнёр уже вносил деньги — нажмите '
+                      '«Внёс» и введите сумму начального взноса. '
+                      'Баланс пересчитается автоматически.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
