@@ -7,8 +7,6 @@ import 'constants.dart';
 import 'contract_dialog.dart';
 import 'documents_block.dart';
 import 'expenses_block.dart';
-import 'partner.dart';
-import 'partner_storage.dart';
 import 'photos_block.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
@@ -145,27 +143,10 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFEF4444),
             ),
-            onPressed: () async {
+            onPressed: () {
               Navigator.pop(ctx);
-
-              // Возврат доли партнёра как «Забрал»,
-              // потому что машина выпадает из работы.
-              final amount = widget.car.partnerAmount;
-              if (amount > 0) {
-                await PartnerStorage.saveTransaction(
-                  PartnerTransaction(
-                    id: newId(),
-                    type: 'out',
-                    amount: amount,
-                    note:
-                        'Возврат по машине (в корзину): ${widget.car.make} ${widget.car.model}',
-                    date: todayIso(),
-                  ),
-                );
-              }
-
               widget.onDelete();
-              if (context.mounted) Navigator.pop(context);
+              Navigator.pop(context);
             },
             child: const Text('В корзину'),
           ),
@@ -180,7 +161,7 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       builder: (_) => ContractDialog(car: widget.car),
     );
   }
-    @override
+   @override
   Widget build(BuildContext context) {
     final car = widget.car;
 
@@ -543,4 +524,4 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       ),
     );
   }
-}
+} 
