@@ -560,7 +560,11 @@ Widget build(BuildContext context) {
                   text: 'Аналитика',
                   icon: Icons.insights_outlined,
                 ),
-                AnalyticsSection(analytics: a),
+                AnalyticsSection(
+                  analytics: a,
+                  allCars: cars,
+                  onOpenCar: openCar,
+                ),
                 const SizedBox(height: 10),
               ],
             ),
