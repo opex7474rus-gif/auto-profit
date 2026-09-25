@@ -67,12 +67,23 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
 
   void saveSale() {
     setState(() {
-      widget.car.salePrice = salePrice.text.trim();
-      widget.car.saleDate =
-          saleDate == null ? todayIso() : dateToIso(saleDate!);
-      if (widget.car.sale > 0 && widget.car.status != 'Продан') {
-        widget.car.status = 'Продан';
-        widget.car.statusChangedAt = todayIso();
+      final price = salePrice.text.trim();
+      widget.car.salePrice = price;
+      final value = double.tryParse(price.replaceAll(',', '.')) ?? 0;
+      if (value > 0) {
+        widget.car.saleDate =
+            saleDate == null ? todayIso() : dateToIso(saleDate!);
+        if (widget.car.status != 'Продан') {
+          widget.car.status = 'Продан';
+          widget.car.statusChangedAt = todayIso();
+        }
+      } else {
+        // Если цену очистили — возвращаем машину в наличие
+        widget.car.saleDate = '';
+        if (widget.car.status == 'Продан') {
+          widget.car.status = 'На продаже';
+          widget.car.statusChangedAt = todayIso();
+        }
       }
     });
     widget.onChanged();
@@ -150,8 +161,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
       context: context,
       builder: (_) => ContractDialog(car: widget.car),
     );
-}
-  @override
+  }
+    @override
   Widget build(BuildContext context) {
     final car = widget.car;
 
@@ -387,18 +398,24 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                 if (car.partnerAmount > 0) ...[
                   const Divider(),
                   DetailRow(
-                    label: 'Доля партнёра',
+                    label: 'Доля партнёра (вложено)',
                     value: money(car.partnerAmount),
                     valueColor: const Color(0xFF9B5DE5),
                   ),
                   DetailRow(
-                    label: 'Прибыль партнёра (33%)',
+                    label: 'Доля прибыли партнёра',
+                    value:
+                        '${car.partnerSharePercent.toStringAsFixed(0)}%',
+                    valueColor: const Color(0xFF9B5DE5),
+                  ),
+                  DetailRow(
+                    label: 'Прибыль партнёра',
                     value: money(car.partnerProfit),
                     bold: true,
                     valueColor: const Color(0xFF9B5DE5),
                   ),
                   DetailRow(
-                    label: 'Прибыль вам (67%)',
+                    label: 'Прибыль вам',
                     value: money(car.isSold ? car.myProfit : 0),
                     bold: true,
                     valueColor: const Color(0xFF10B981),
@@ -431,6 +448,8 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Цена продажи',
                     prefixIcon: Icon(Icons.attach_money),
+                    helperText:
+                        'Оставьте пустым или 0, чтобы машина осталась в наличии',
                   ),
                 ),
                 const SizedBox(height: 12),
