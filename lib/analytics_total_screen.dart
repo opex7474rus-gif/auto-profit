@@ -153,14 +153,14 @@ class AnalyticsTotalScreen extends StatelessWidget {
             text: 'Прибыль по всем месяцам',
             icon: Icons.calendar_month_outlined,
           ),
-          _allMonths(a),
+          _allMonths(context, a),
 
           // ПРИБЫЛЬ ПО МАРКАМ
           const SectionTitle(
             text: 'Прибыль по маркам',
             icon: Icons.bar_chart_rounded,
           ),
-          _brandStats(a),
+          _brandStats(context, a),
         ],
       ),
     );
@@ -366,7 +366,7 @@ class AnalyticsTotalScreen extends StatelessWidget {
     );
   }
 
-  Widget _allMonths(Analytics a) {
+  Widget _allMonths(BuildContext context, Analytics a) {
     final list = a.allMonthlyStats;
     if (list.isEmpty) {
       return PaddedCard(
@@ -429,7 +429,7 @@ class AnalyticsTotalScreen extends StatelessWidget {
     );
   }
 
-  Widget _brandStats(Analytics a) {
+  Widget _brandStats(BuildContext context, Analytics a) {
     final list = a.brandStats;
     if (list.isEmpty) {
       return PaddedCard(
