@@ -206,7 +206,7 @@ class _PartnerScreenState extends State<PartnerScreen> {
       setState(() => transactions.insert(0, tx));
     }
   }
-    Future<void> _deleteTransaction(PartnerTransaction tx) async {
+   Future<void> _deleteTransaction(PartnerTransaction tx) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -302,13 +302,13 @@ class _PartnerScreenState extends State<PartnerScreen> {
             child: Column(
               children: [
                 DetailRow(
-                  label: 'Вложено в машины',
+                  label: 'Вложено в машины (всего)',
                   value: money(b.investedInCars),
                   valueColor: const Color(0xFF4A4FC7),
                 ),
                 DetailRow(
-                  label: 'В работе сейчас',
-                  value: money(b.inWorkNow),
+                  label: 'В работе сейчас (заморожено)',
+                  value: money(b.frozenInCars),
                   valueColor: const Color(0xFFFF7A45),
                 ),
                 DetailRow(
@@ -317,7 +317,7 @@ class _PartnerScreenState extends State<PartnerScreen> {
                   valueColor: const Color(0xFF06B6D4),
                 ),
                 DetailRow(
-                  label: 'Прибыль партнёра',
+                  label: 'Прибыль партнёра (в общаке)',
                   value: money(b.profitShare),
                   valueColor: const Color(0xFF10B981),
                 ),
@@ -334,14 +334,18 @@ class _PartnerScreenState extends State<PartnerScreen> {
                 ),
                 const Divider(),
                 DetailRow(
-                  label: 'Всего внёс',
-                  value: money(b.totalIn),
+                  label: 'Свободный остаток в общаке',
+                  value: money(b.freeInPot),
                   bold: true,
+                  valueColor: b.freeInPot >= 0
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFFEF4444),
                 ),
                 DetailRow(
-                  label: 'Всего забрал',
-                  value: money(b.totalOut),
+                  label: 'Всего денег в бизнесе',
+                  value: money(b.totalInBusiness),
                   bold: true,
+                  valueColor: const Color(0xFF4A4FC7),
                 ),
               ],
             ),
@@ -367,9 +371,9 @@ class _PartnerScreenState extends State<PartnerScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Если партнёр уже вносил деньги — нажмите '
-                      '«Внёс» и введите сумму начального взноса. '
-                      'Баланс пересчитается автоматически.',
+                      'Если партнёр вносил или забирал деньги — '
+                      'нажмите «Внёс» или «Забрал». Всё, что '
+                      'связано с машинами, подтягивается автоматически.',
                       style: TextStyle(
                         fontSize: 12.5,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -494,15 +498,15 @@ class _PartnerScreenState extends State<PartnerScreen> {
   }
 
   Widget _mainBalanceCard(PartnerBalance b) {
-    final balance = b.balance;
-    final isPositive = balance >= 0;
+    final free = b.freeInPot;
+    final isPositive = free >= 0;
     final gradient = isPositive
         ? const [Color(0xFF10B981), Color(0xFF34D399)]
         : const [Color(0xFFEF4444), Color(0xFFF87171)];
 
     final label = isPositive
-        ? 'Вы должны партнёру'
-        : 'Партнёр должен вам';
+        ? 'Свободный остаток партнёра'
+        : 'Партнёр забрал больше — должен вам';
 
     return Container(
       decoration: BoxDecoration(
@@ -539,20 +543,22 @@ class _PartnerScreenState extends State<PartnerScreen> {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.9),
-                  letterSpacing: 0.3,
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.9),
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
           Text(
-            money(balance.abs()),
+            money(free.abs()),
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.w800,
@@ -575,13 +581,13 @@ class _PartnerScreenState extends State<PartnerScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(
-                  Icons.savings_outlined,
+                  Icons.lock_outline,
                   size: 13,
                   color: Colors.white,
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  'Свободный остаток: ${money(b.freeBalance)}',
+                  'В работе: ${money(b.frozenInCars)}',
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -595,4 +601,4 @@ class _PartnerScreenState extends State<PartnerScreen> {
       ),
     );
   }
-}
+} 
