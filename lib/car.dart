@@ -44,6 +44,7 @@ class Car {
   String salePrice;
   String saleDate;
   String partnerInvestment;
+  String partnerPercent;
   List<String> tags;
   List<Expense> expenses;
   List<String> photos;
@@ -68,6 +69,7 @@ class Car {
     required this.salePrice,
     required this.saleDate,
     required this.partnerInvestment,
+    this.partnerPercent = '',
     required this.tags,
     required this.expenses,
     required this.photos,
@@ -94,6 +96,7 @@ class Car {
       salePrice: (json['salePrice'] ?? '') as String,
       saleDate: (json['saleDate'] ?? '') as String,
       partnerInvestment: (json['partnerInvestment'] ?? '') as String,
+      partnerPercent: (json['partnerPercent'] ?? '') as String,
       tags: ((json['tags'] ?? []) as List)
           .map((e) => e.toString())
           .toList(),
@@ -128,6 +131,7 @@ class Car {
         'salePrice': salePrice,
         'saleDate': saleDate,
         'partnerInvestment': partnerInvestment,
+        'partnerPercent': partnerPercent,
         'tags': tags,
         'expenses': expenses.map((e) => e.toJson()).toList(),
         'photos': photos,
@@ -158,6 +162,7 @@ class Car {
       salePrice: '',
       saleDate: '',
       partnerInvestment: partnerInvestment,
+      partnerPercent: partnerPercent,
       tags: List<String>.from(tags),
       expenses: [],
       photos: [],
@@ -174,6 +179,15 @@ class Car {
   double get partnerAmount =>
       double.tryParse(partnerInvestment.replaceAll(',', '.')) ?? 0;
 
+  /// Процент прибыли партнёра. Если пусто — используем 33% (для старых машин).
+  double get partnerSharePercent {
+    final raw = partnerPercent.trim();
+    if (raw.isEmpty) {
+      return partnerAmount > 0 ? kPartnerProfitShare * 100 : 0;
+    }
+    return double.tryParse(raw.replaceAll(',', '.')) ?? 0;
+  }
+
   double get expensesTotal =>
       expenses.fold(0, (sum, item) => sum + item.amount);
 
@@ -182,7 +196,7 @@ class Car {
   double get profit => sale - invested;
 
   double get partnerProfit =>
-      partnerAmount > 0 ? profit * kPartnerProfitShare : 0;
+      partnerAmount > 0 ? profit * (partnerSharePercent / 100) : 0;
 
   double get myProfit => profit - partnerProfit;
 
@@ -205,10 +219,13 @@ class Car {
     return DateTime.tryParse(statusChangedAt);
   }
 
+  /// Счётчик дней на складе.
+  /// Если машина не продана — растёт до сегодня.
+  /// Если продана — фиксируется на дате продажи.
   int get daysInStock {
     final start = purchaseDateTime;
     if (start == null) return 0;
-    final end = saleDateTime ?? DateTime.now();
+    final end = isSold ? (saleDateTime ?? DateTime.now()) : DateTime.now();
     return end.difference(start).inDays;
   }
 
