@@ -23,8 +23,6 @@ class Storage {
   static SupabaseClient get _db => Supabase.instance.client;
   static String? get _uid => _db.auth.currentUser?.id;
 
-  /// Загрузка файла по локальному пути — только Android/iOS.
-  /// На web не используется, там работает [uploadBytes].
   static Future<String?> uploadFile({
     required String bucket,
     required String localPath,
@@ -45,8 +43,6 @@ class Storage {
     }
   }
 
-  /// Загрузка файла из байтов — работает на всех платформах,
-  /// включая Web (там файл — это Uint8List из браузера).
   static Future<String?> uploadBytes({
     required String bucket,
     required List<int> bytes,
@@ -106,6 +102,7 @@ class Storage {
       'sale_price': c.salePrice,
       'sale_date': c.saleDate,
       'partner_investment': c.partnerInvestment,
+      'partner_percent': c.partnerPercent,
       'tags': c.tags,
       'expenses': c.expenses.map((e) => e.toJson()).toList(),
       'photos': c.photos,
@@ -133,6 +130,7 @@ class Storage {
       salePrice: (r['sale_price'] ?? '') as String,
       saleDate: (r['sale_date'] ?? '') as String,
       partnerInvestment: (r['partner_investment'] ?? '') as String,
+      partnerPercent: (r['partner_percent'] ?? '') as String,
       tags: ((r['tags'] ?? []) as List)
           .map((e) => e.toString())
           .toList(),
