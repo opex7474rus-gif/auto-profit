@@ -7,6 +7,8 @@ import 'constants.dart';
 import 'contract_dialog.dart';
 import 'documents_block.dart';
 import 'expenses_block.dart';
+import 'partner.dart';
+import 'partner_storage.dart';
 import 'photos_block.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
@@ -78,7 +80,6 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
           widget.car.statusChangedAt = todayIso();
         }
       } else {
-        // Если цену очистили — возвращаем машину в наличие
         widget.car.saleDate = '';
         if (widget.car.status == 'Продан') {
           widget.car.status = 'На продаже';
@@ -144,10 +145,27 @@ class _CarDetailsScreenState extends State<CarDetailsScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFEF4444),
             ),
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
+
+              // Возврат доли партнёра как «Забрал»,
+              // потому что машина выпадает из работы.
+              final amount = widget.car.partnerAmount;
+              if (amount > 0) {
+                await PartnerStorage.saveTransaction(
+                  PartnerTransaction(
+                    id: newId(),
+                    type: 'out',
+                    amount: amount,
+                    note:
+                        'Возврат по машине (в корзину): ${widget.car.make} ${widget.car.model}',
+                    date: todayIso(),
+                  ),
+                );
+              }
+
               widget.onDelete();
-              Navigator.pop(context);
+              if (context.mounted) Navigator.pop(context);
             },
             child: const Text('В корзину'),
           ),
