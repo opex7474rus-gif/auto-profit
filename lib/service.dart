@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import 'constants.dart';
 
 class Service {
