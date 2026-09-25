@@ -33,6 +33,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final sellerAddress = TextEditingController();
   final notes = TextEditingController();
   final partnerInvestment = TextEditingController();
+  final partnerPercent = TextEditingController();
 
   final makeFocus = FocusNode();
   final modelFocus = FocusNode();
@@ -46,6 +47,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
   final sellerAddressFocus = FocusNode();
   final notesFocus = FocusNode();
   final partnerFocus = FocusNode();
+  final partnerPercentFocus = FocusNode();
 
   String status = 'Куплен';
   DateTime? purchaseDate;
@@ -70,6 +72,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       sellerAddress.text = c.sellerAddress;
       notes.text = c.notes;
       partnerInvestment.text = c.partnerInvestment;
+      partnerPercent.text = c.partnerPercent;
       status = c.status;
       purchaseDate = c.purchaseDateTime;
       tags.addAll(c.tags);
@@ -92,6 +95,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     sellerAddress.dispose();
     notes.dispose();
     partnerInvestment.dispose();
+    partnerPercent.dispose();
     makeFocus.dispose();
     modelFocus.dispose();
     yearFocus.dispose();
@@ -104,6 +108,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
     sellerAddressFocus.dispose();
     notesFocus.dispose();
     partnerFocus.dispose();
+    partnerPercentFocus.dispose();
     super.dispose();
   }
 
@@ -173,6 +178,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
       c.sellerAddress = sellerAddress.text.trim();
       c.notes = notes.text.trim();
       c.partnerInvestment = partnerInvestment.text.trim();
+      c.partnerPercent = partnerPercent.text.trim();
       c.tags = tags.toList();
       widget.onSave(c);
     } else {
@@ -196,6 +202,7 @@ class _CarFormScreenState extends State<CarFormScreen> {
           salePrice: '',
           saleDate: '',
           partnerInvestment: partnerInvestment.text.trim(),
+          partnerPercent: partnerPercent.text.trim(),
           tags: tags.toList(),
           expenses: [],
           photos: [],
@@ -229,8 +236,8 @@ class _CarFormScreenState extends State<CarFormScreen> {
         ),
       ),
     );
-}
-  @override
+  }
+    @override
   Widget build(BuildContext context) {
     final allTagOptions = <String>{
       ...kTagSuggestions,
@@ -303,9 +310,16 @@ class _CarFormScreenState extends State<CarFormScreen> {
           _field(
             partnerInvestment,
             partnerFocus,
-            'Доля партнёра (₽) — прибыль 33%',
+            'Доля партнёра — вложено (₽)',
             number: true,
             icon: Icons.handshake_outlined,
+          ),
+          _field(
+            partnerPercent,
+            partnerPercentFocus,
+            'Доля прибыли партнёра, % (пусто = 33%)',
+            number: true,
+            icon: Icons.percent,
           ),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
