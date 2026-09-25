@@ -102,7 +102,7 @@ class AnalyticsInvestedScreen extends StatelessWidget {
             text: 'Все категории расходов',
             icon: Icons.local_gas_station_outlined,
           ),
-          _allCategories(a),
+          _allCategories(context, a),
         ],
       ),
     );
@@ -319,7 +319,7 @@ class AnalyticsInvestedScreen extends StatelessWidget {
     );
   }
 
-  Widget _allCategories(Analytics a) {
+  Widget _allCategories(BuildContext context, Analytics a) {
     final list = a.allExpenseCategories;
     if (list.isEmpty) {
       return PaddedCard(
