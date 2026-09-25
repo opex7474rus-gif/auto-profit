@@ -34,6 +34,17 @@ class BrandStat {
   });
 }
 
+class DayBucket {
+  final String label;
+  final int count;
+  final List<Car> cars;
+  DayBucket({
+    required this.label,
+    required this.count,
+    required this.cars,
+  });
+}
+
 class Analytics {
   final List<Car> cars;
 
@@ -43,8 +54,16 @@ class Analytics {
   List<Car> get stockCars => cars.where((c) => !c.isSold).toList();
   List<Car> get staleCars => cars.where((c) => c.isStale).toList();
 
+  // === ТЕКУЩИЙ МЕСЯЦ ===
+
   List<Car> get soldThisMonth => soldCars.where((c) {
         final d = c.saleDateTime;
+        if (d == null) return false;
+        return isSameMonth(d, DateTime.now());
+      }).toList();
+
+  List<Car> get boughtThisMonth => cars.where((c) {
+        final d = c.purchaseDateTime;
         if (d == null) return false;
         return isSameMonth(d, DateTime.now());
       }).toList();
@@ -88,7 +107,7 @@ class Analytics {
     return (profitThisMonth / invested) * 100;
   }
 
-  int get staleCountStock => staleCars.length;
+  // === ОБЩИЕ СУММЫ ===
 
   double get totalPurchase => cars.fold(0, (s, c) => s + c.purchase);
   double get totalExpenses =>
@@ -137,6 +156,55 @@ class Analytics {
       ? 0
       : (totalProfit / totalInvestedSold) * 100;
 
+  int get staleCountStock => staleCars.length;
+    // === СКЛАД — распределение по дням ===
+
+  List<DayBucket> get stockByDays {
+    final list = stockCars.toList()
+      ..sort((a, b) => b.daysInStock.compareTo(a.daysInStock));
+
+    final b1 = <Car>[];
+    final b2 = <Car>[];
+    final b3 = <Car>[];
+    final b4 = <Car>[];
+    for (final c in list) {
+      if (c.daysInStock <= 15) {
+        b1.add(c);
+      } else if (c.daysInStock <= 30) {
+        b2.add(c);
+      } else if (c.daysInStock <= 60) {
+        b3.add(c);
+      } else {
+        b4.add(c);
+      }
+    }
+
+    return [
+      DayBucket(label: '0–15 дней', count: b1.length, cars: b1),
+      DayBucket(label: '15–30 дней', count: b2.length, cars: b2),
+      DayBucket(label: '30–60 дней', count: b3.length, cars: b3),
+      DayBucket(label: '60+ дней', count: b4.length, cars: b4),
+    ];
+  }
+
+  // === РАСХОДЫ — все категории (не только топ-5) ===
+
+  List<CategoryStat> get allExpenseCategories {
+    final map = <String, double>{};
+    for (final c in cars) {
+      for (final e in c.expenses) {
+        map[e.category] = (map[e.category] ?? 0) + e.amount;
+      }
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted
+        .map((e) => CategoryStat(name: e.key, amount: e.value))
+        .toList();
+  }
+
+  // === ПАРТНЁР ===
+
   List<Car> get partnerCars =>
       cars.where((c) => c.partnerAmount > 0).toList();
   List<Car> get partnerStock =>
@@ -160,6 +228,8 @@ class Analytics {
 
   double get myProfitShare => totalProfit - partnerProfitShare;
 
+  // === ПОТЕНЦИАЛ ===
+
   double get potentialProfit {
     if (soldCars.isEmpty) return 0;
     final totalInvestedSoldLocal =
@@ -168,6 +238,8 @@ class Analytics {
     final margin = totalProfit / totalInvestedSoldLocal;
     return totalInvestedStock * margin;
   }
+
+  // === МАРКИ ===
 
   List<BrandStat> get brandStats {
     final map = <String, List<Car>>{};
@@ -195,6 +267,8 @@ class Analytics {
     return list;
   }
 
+  // === ЛУЧШАЯ / ХУДШАЯ ===
+
   Car? get bestCar {
     if (soldCars.isEmpty) return null;
     return soldCars.reduce((a, b) => a.profit >= b.profit ? a : b);
@@ -205,6 +279,8 @@ class Analytics {
     return soldCars.reduce((a, b) => a.profit <= b.profit ? a : b);
   }
 
+  // === СТАТУСЫ ===
+
   Map<String, int> get statusCounts {
     final map = <String, int>{};
     for (final s in kStatuses) {
@@ -213,20 +289,13 @@ class Analytics {
     return map;
   }
 
+  // === ТОП-5 РАСХОДОВ (для существующей детализации) ===
+
   List<CategoryStat> get topExpenseCategories {
-    final map = <String, double>{};
-    for (final c in cars) {
-      for (final e in c.expenses) {
-        map[e.category] = (map[e.category] ?? 0) + e.amount;
-      }
-    }
-    final sorted = map.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sorted
-        .take(5)
-        .map((e) => CategoryStat(name: e.key, amount: e.value))
-        .toList();
+    return allExpenseCategories.take(5).toList();
   }
+
+  // === ПРИБЫЛЬ ПО МЕСЯЦАМ ===
 
   List<MonthStat> get monthlyStats {
     final now = DateTime.now();
@@ -248,5 +317,65 @@ class Analytics {
       ));
     }
     return months;
+  }
+
+  // === ПРИБЫЛЬ ПО ВСЕМ МЕСЯЦАМ (для экрана «Прибыль всего») ===
+
+  List<MonthStat> get allMonthlyStats {
+    if (soldCars.isEmpty) return [];
+    final byMonth = <String, List<Car>>{};
+    for (final c in soldCars) {
+      final d = c.saleDateTime;
+      if (d == null) continue;
+      final key = '${d.year}-${d.month.toString().padLeft(2, '0')}';
+      byMonth.putIfAbsent(key, () => []).add(c);
+    }
+    final keys = byMonth.keys.toList()..sort();
+    final result = <MonthStat>[];
+    for (final k in keys) {
+      final parts = k.split('-');
+      final y = int.parse(parts[0]);
+      final m = int.parse(parts[1]);
+      final listCars = byMonth[k]!;
+      final profit = listCars.fold(0.0, (s, c) => s + c.profit);
+      result.add(MonthStat(
+        label: '${m.toString().padLeft(2, '0')}/${(y % 100).toString().padLeft(2, '0')}',
+        profit: profit,
+        count: listCars.length,
+      ));
+    }
+    return result;
+  }
+
+  // === ТОП-10 МАШИН ПО ПРИБЫЛИ / УБЫТКУ ===
+
+  List<Car> get top10ByProfit {
+    final list = soldCars.toList()
+      ..sort((a, b) => b.profit.compareTo(a.profit));
+    return list.take(10).toList();
+  }
+
+  List<Car> get top10ByLoss {
+    final list = soldCars
+        .where((c) => c.profit < 0)
+        .toList()
+      ..sort((a, b) => a.profit.compareTo(b.profit));
+    return list.take(10).toList();
+  }
+
+  // === СРЕДНИЙ СРОК ПО МЕСЯЦАМ (для экрана «Прибыль всего») ===
+
+  double get averageDaysToSellLast3Months {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month - 3, 1);
+    final recent =
+        soldCars.where((c) {
+      final d = c.saleDateTime;
+      if (d == null) return false;
+      return !d.isBefore(start);
+    }).toList();
+    if (recent.isEmpty) return 0;
+    return recent.map((c) => c.daysInStock).reduce((a, b) => a + b) /
+        recent.length;
   }
 }
