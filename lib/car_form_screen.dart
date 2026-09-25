@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'autocomplete_field.dart';
 import 'car.dart';
 import 'constants.dart';
-import 'partner.dart';
-import 'partner_storage.dart';
 import 'utils.dart';
 import 'widgets_ui.dart';
 
@@ -54,8 +52,6 @@ class _CarFormScreenState extends State<CarFormScreen> {
   String status = 'Куплен';
   DateTime? purchaseDate;
   final Set<String> tags = {};
-
-  bool saving = false;
 
   bool get isEdit => widget.car != null;
 
@@ -155,85 +151,38 @@ class _CarFormScreenState extends State<CarFormScreen> {
       setState(() => tags.add(result));
     }
   }
-
-  /// Создаёт партнёрскую транзакцию на разницу между старым и новым
-  /// вкладом партнёра в эту машину.
-  ///
-  /// - Новая машина с долей 200 000 → 'in' на 200 000
-  /// - Редактирование, доля выросла с 200 000 до 250 000 → 'in' на 50 000
-  /// - Редактирование, доля упала с 200 000 до 150 000 → 'out' на 50 000
-  /// - Без изменений → ничего
-  Future<void> _syncPartnerTransaction({
-    required double oldAmount,
-    required double newAmount,
-    required String carLabel,
-    required String carId,
-  }) async {
-    final diff = newAmount - oldAmount;
-    if (diff.abs() < 0.01) return; // нет изменений
-    final isIn = diff > 0;
-    final value = diff.abs();
-    final tx = PartnerTransaction(
-      id: newId(),
-      type: isIn ? 'in' : 'out',
-      amount: value,
-      note: '${isIn ? "Взнос" : "Возврат"} по машине: $carLabel',
-      date: todayIso(),
-    );
-    await PartnerStorage.saveTransaction(tx);
-  }
-    Future<void> save() async {
-    if (saving) return;
+    void save() {
     if (make.text.trim().isEmpty || model.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Введите марку и модель')),
       );
       return;
     }
+    final iso = purchaseDate == null ? '' : dateToIso(purchaseDate!);
 
-    setState(() => saving = true);
-
-    try {
-      final iso = purchaseDate == null ? '' : dateToIso(purchaseDate!);
-      final newPartnerAmount = double.tryParse(
-            partnerInvestment.text.trim().replaceAll(',', '.'),
-          ) ??
-          0;
-
-      if (isEdit) {
-        final c = widget.car!;
-        final oldPartnerAmount = c.partnerAmount;
-        final carLabel = '${make.text.trim()} ${model.text.trim()}';
-
-        if (c.status != status) c.statusChangedAt = todayIso();
-        c.make = make.text.trim();
-        c.model = model.text.trim();
-        c.year = year.text.trim();
-        c.vin = vin.text.trim();
-        c.plate = plate.text.trim();
-        c.mileage = mileage.text.trim();
-        c.purchasePrice = purchase.text.trim();
-        c.purchaseDate = iso;
-        c.status = status;
-        c.seller = seller.text.trim();
-        c.sellerPhone = sellerPhone.text.trim();
-        c.sellerAddress = sellerAddress.text.trim();
-        c.notes = notes.text.trim();
-        c.partnerInvestment = partnerInvestment.text.trim();
-        c.partnerPercent = partnerPercent.text.trim();
-        c.tags = tags.toList();
-
-        await _syncPartnerTransaction(
-          oldAmount: oldPartnerAmount,
-          newAmount: newPartnerAmount,
-          carLabel: carLabel,
-          carId: c.id,
-        );
-
-        widget.onSave(c);
-      } else {
-        final carLabel = '${make.text.trim()} ${model.text.trim()}';
-        final newCar = Car(
+    if (isEdit) {
+      final c = widget.car!;
+      if (c.status != status) c.statusChangedAt = todayIso();
+      c.make = make.text.trim();
+      c.model = model.text.trim();
+      c.year = year.text.trim();
+      c.vin = vin.text.trim();
+      c.plate = plate.text.trim();
+      c.mileage = mileage.text.trim();
+      c.purchasePrice = purchase.text.trim();
+      c.purchaseDate = iso;
+      c.status = status;
+      c.seller = seller.text.trim();
+      c.sellerPhone = sellerPhone.text.trim();
+      c.sellerAddress = sellerAddress.text.trim();
+      c.notes = notes.text.trim();
+      c.partnerInvestment = partnerInvestment.text.trim();
+      c.partnerPercent = partnerPercent.text.trim();
+      c.tags = tags.toList();
+      widget.onSave(c);
+    } else {
+      widget.onSave(
+        Car(
           id: newId(),
           make: make.text.trim(),
           model: model.text.trim(),
@@ -257,23 +206,10 @@ class _CarFormScreenState extends State<CarFormScreen> {
           expenses: [],
           photos: [],
           attachments: [],
-        );
-
-        await _syncPartnerTransaction(
-          oldAmount: 0,
-          newAmount: newPartnerAmount,
-          carLabel: carLabel,
-          carId: newCar.id,
-        );
-
-        widget.onSave(newCar);
-      }
-
-      if (!mounted) return;
-      Navigator.pop(context);
-    } finally {
-      if (mounted) setState(() => saving = false);
+        ),
+      );
     }
+    Navigator.pop(context);
   }
 
   Widget _field(
@@ -466,23 +402,10 @@ class _CarFormScreenState extends State<CarFormScreen> {
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: saving ? null : save,
-            icon: saving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.check_rounded),
+            onPressed: save,
+            icon: const Icon(Icons.check_rounded),
             label: Text(
-              saving
-                  ? 'Сохранение…'
-                  : (isEdit
-                      ? 'Сохранить изменения'
-                      : 'Сохранить автомобиль'),
+              isEdit ? 'Сохранить изменения' : 'Сохранить автомобиль',
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
